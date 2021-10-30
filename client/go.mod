@@ -1,4 +1,4 @@
-module github.com/matiaseiglesias/sist-distribuidos-tp2-client
+module github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/client
 
 go 1.13
 

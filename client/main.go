@@ -5,9 +5,9 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/jszwec/csvutil"
+	questions "github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -72,16 +72,16 @@ func failOnError(err error, msg string) {
 //	log.Info("ready to go")
 //}
 
-type Question struct {
-	Id           int64     `csv:"Id"`
-	OwnerUserId  float64   `csv:"OwnerUserId"`
-	CreationDate time.Time `csv:"CreationDate"`
-	ClosedDate   string    `csv:"ClosedDate"`
-	Score        int64     `csv:"Score"`
-	Title        string    `csv:"Title"`
-	Body         string    `csv:"Body"`
-	Tags         string    `csv:"Tags"`
-}
+//type Question struct {
+//	Id           int64     `csv:"Id"`
+//	OwnerUserId  float64   `csv:"OwnerUserId"`
+//	CreationDate time.Time `csv:"CreationDate"`
+//	ClosedDate   string    `csv:"ClosedDate"`
+//	Score        int64     `csv:"Score"`
+//	Title        string    `csv:"Title"`
+//	Body         string    `csv:"Body"`
+//	Tags         string    `csv:"Tags"`
+//}
 
 func main() {
 
@@ -121,8 +121,8 @@ func main() {
 	)
 	failOnError(err, "Failed to declare a queue")
 
-	questions, _ := os.Open(questionsPath)
-	r := csv.NewReader(questions)
+	questions_, _ := os.Open(questionsPath)
+	r := csv.NewReader(questions_)
 	dec, err := csvutil.NewDecoder(r)
 	if err != nil {
 		log.Fatal(err)
@@ -132,7 +132,7 @@ func main() {
 	i := 0
 	n_error := 0
 	chuncksize := 2
-	tmpQ := []Question{}
+	tmpQ := []questions.Question{}
 	for {
 		if i%10000 == 0 {
 			log.Println("mensajes enviados: ", i)
@@ -140,7 +140,7 @@ func main() {
 		var err error
 		j := 0
 		for j < chuncksize {
-			question := Question{}
+			question := questions.Question{}
 			if err = dec.Decode(&question); err == io.EOF {
 				break
 			} else if err != nil {

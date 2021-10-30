@@ -1,4 +1,4 @@
-module github.com/matiaseiglesias/sist-distribuidos-tp2-inputInterface
+module github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/inputInterface
 
 go 1.13
 

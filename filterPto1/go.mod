@@ -1,4 +1,4 @@
-module github.com/matiaseiglesias/sist-distribuidos-tp2-filterPto1
+module github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/filterPto1
 
 go 1.13
 
