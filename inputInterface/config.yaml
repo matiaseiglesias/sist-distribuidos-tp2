@@ -1,5 +1,5 @@
 destinos: 
-    punto1:
+    q_punto1:
       - "Body"
       - "Score"
 rabbitQueue:

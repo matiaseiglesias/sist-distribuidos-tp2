@@ -9,6 +9,8 @@ LABEL intermediateStageToBeDeleted=true
 
 RUN mkdir -p /build
 WORKDIR /build/
+
+COPY libraries/ ../libraries
 COPY inputInterface/main.go .
 COPY inputInterface/go.mod .
 COPY inputInterface/go.sum .

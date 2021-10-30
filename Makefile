@@ -12,6 +12,7 @@ docker-image:
 	docker build -f ./inputInterface/consumer.dockerfile -t "tp2_input_interface:latest" .
 	docker build -f ./client/producer.dockerfile -t "tp2_client:latest" .
 	docker build -f ./filterPto1/filterPto1.dockerfile -t "tp2_filter_pto_1:latest" .
+	docker build -f ./percentageCalculator/percentageCalculator.dockerfile -t "tp2_percentage_calculator:latest" .
 	
 	# Execute this command from time to time to clean up intermediate stages generated 
 	# during client build (your hard drive will like this :) ). Don't left uncommented if you 

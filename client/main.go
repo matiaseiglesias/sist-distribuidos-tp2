@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/jszwec/csvutil"
-	questions "github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -70,17 +70,6 @@ func failOnError(err error, msg string) {
 //	log.Info("starting client")
 //	time.Sleep(70 * time.Second)
 //	log.Info("ready to go")
-//}
-
-//type Question struct {
-//	Id           int64     `csv:"Id"`
-//	OwnerUserId  float64   `csv:"OwnerUserId"`
-//	CreationDate time.Time `csv:"CreationDate"`
-//	ClosedDate   string    `csv:"ClosedDate"`
-//	Score        int64     `csv:"Score"`
-//	Title        string    `csv:"Title"`
-//	Body         string    `csv:"Body"`
-//	Tags         string    `csv:"Tags"`
 //}
 
 func main() {
@@ -159,24 +148,15 @@ func main() {
 			break
 		}
 		//log.Println("tamaño del chunk ", len(tmpQ))
-		b, err := csvutil.Marshal(tmpQ)
-		if err != nil {
-			log.Println("error:", err)
-		}
-		err = ch.Publish(
-			"",     // exchange
-			q.Name, // routing key
-			false,  // mandatory
-			false,
-			amqp.Publishing{
-				DeliveryMode: amqp.Persistent,
-				ContentType:  "text/plain",
-				Body:         b,
-			})
-		//b.Reset()
+		err = questions.Publish(ch, q.Name, tmpQ, 1)
 		tmpQ = nil
 		failOnError(err, "Failed to publish a message")
 	}
+
+	tmpQ = append(tmpQ, questions.EndQuestion())
+	err = questions.Publish(ch, q.Name, tmpQ, 2)
+	failOnError(err, "Failed to publish a message")
+
 	log.Info("mensajes mandados:", i)
 	log.Info("errores:", n_error)
 }

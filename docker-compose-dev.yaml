@@ -61,3 +61,16 @@ services:
     links: 
       - rabbitmq
     entrypoint: /filterPto1   
+
+  percentageCalculator1:
+    container_name: percentageCalculator_1
+    image: tp2_percentage_calculator:latest
+    volumes:
+      - ./percentageCalculator/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /percentageCalculator
+  

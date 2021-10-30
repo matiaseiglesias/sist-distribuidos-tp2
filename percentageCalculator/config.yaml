@@ -1,6 +1,5 @@
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
-input: "q_punto1"
-output: "<10Negative"
+input: "<10Negative"
 log:
   level: "info"

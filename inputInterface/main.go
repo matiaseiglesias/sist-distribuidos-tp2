@@ -2,11 +2,9 @@ package main
 
 import (
 	"strings"
-	"time"
 
-	"github.com/fatih/structs"
 	"github.com/jszwec/csvutil"
-	"github.com/mitchellh/mapstructure"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -60,34 +58,6 @@ func PrintConfig(v *viper.Viper) {
 	log.Infof("Log Level: %s", v.GetString("log.level"))
 }
 
-func contains(set []string, value string) bool {
-	for _, v := range set {
-		if v == value {
-			return true
-		}
-	}
-	return false
-}
-
-func filter(q Question, columns []string) Question {
-
-	s := structs.Map(q)
-
-	for key := range s {
-		if contains(columns, key) {
-			continue
-		}
-		delete(s, key)
-	}
-
-	var result Question
-	err := mapstructure.Decode(s, &result)
-	if err != nil {
-		log.Fatal("Esto no funca")
-	}
-	return result
-}
-
 func failOnError(err error, msg string) {
 	if err != nil {
 		log.Fatalf("%s: %s", msg, err)
@@ -129,17 +99,6 @@ func initRabbitQueues(addr string, names []string) *amqp.Channel {
 	return ch
 }
 
-type Question struct {
-	Id           int64     `csv:"Id"`
-	OwnerUserId  float64   `csv:"OwnerUserId"`
-	CreationDate time.Time `csv:"CreationDate"`
-	ClosedDate   string    `csv:"ClosedDate"`
-	Score        int64     `csv:"Score"`
-	Title        string    `csv:"Title"`
-	Body         string    `csv:"Body"`
-	Tags         string    `csv:"Tags"`
-}
-
 func getKeys(myMap map[string][]string) []string {
 	keys := make([]string, len(myMap))
 	i := 0
@@ -175,12 +134,12 @@ func main() {
 
 	channel := initRabbitQueues(ADDR, queueNames)
 
-	//err = ch.Qos(
-	//	1,     // prefetch count
-	//	0,     // prefetch size
-	//	false, // global
-	//)
-	//failOnError(err, "Failed to set QoS")
+	err = channel.Qos(
+		1,     // prefetch count
+		0,     // prefetch size
+		false, // global
+	)
+	failOnError(err, "Failed to set QoS")
 
 	msgs, err := channel.Consume(
 		"input", // queue
@@ -198,46 +157,48 @@ func main() {
 	go func() {
 		i := 0
 		fallas := 0
-		var questions []Question
+		var questions_ []questions.Question
+		running := true
+		times := 1
 		for d := range msgs {
-			if err := csvutil.Unmarshal(d.Body, &questions); err != nil {
+			if err := csvutil.Unmarshal(d.Body, &questions_); err != nil {
 				log.Println("error:", err)
 				fallas++
 				continue
 			}
+			d.Ack(false)
 			for destino, columns := range destinos {
-				for _, readQ := range questions {
-					filterQ := []Question{filter(readQ, columns)}
+				for _, readQ := range questions_ {
 
-					b, err := csvutil.Marshal(filterQ)
-					if err != nil {
-						log.Println("error:", err)
+					var filterQ []questions.Question
+					if questions.IsEndQuestion(&readQ) {
+						log.Println("recibi un mensaje de stop")
+						running = false
+						filterQ = []questions.Question{readQ}
+						times = 1
+					} else {
+						filterQ = []questions.Question{questions.Filter(readQ, columns)}
 					}
-
-					err = channel.Publish(
-						"",      // exchange
-						destino, // routing key
-						false,   // mandatory
-						false,
-						amqp.Publishing{
-							DeliveryMode: amqp.Persistent,
-							ContentType:  "text/plain",
-							Body:         b,
-						})
+					err = questions.Publish(channel, destino, filterQ, times)
 					failOnError(err, "Failed to publish a message")
+
 				}
 			}
-			d.Ack(false)
-			i += len(questions)
-			questions = nil
+			i += len(questions_)
+			questions_ = nil
 			if i%5000 == 0 {
 				log.Println("[Filtro]mensajes leidos: ", i)
 				log.Println("[Filtro]mensajes fallidos: ", fallas)
+			}
+			if !running {
+				log.Println(" bye bye")
+				forever <- false
+				break
 			}
 		}
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 	<-forever
-
+	log.Printf(" [*] Closing input interface")
 }

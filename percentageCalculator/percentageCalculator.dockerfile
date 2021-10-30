@@ -9,15 +9,15 @@ LABEL intermediateStageToBeDeleted=true
 
 RUN mkdir -p /build
 WORKDIR /build/
-COPY libraries/ ../libraries
-COPY client/main.go .
-COPY client/go.mod .
-COPY client/go.sum .
-#COPY ./client/src ./src
+
+COPY percentageCalculator/main.go .
+COPY percentageCalculator/go.mod .
+COPY percentageCalculator/go.sum .
+
 # CGO_ENABLED must be disabled to run go binary in Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -o bin/client
+RUN CGO_ENABLED=0 GOOS=linux go build -o bin/percentageCalculator
 
 
 FROM busybox:latest
-COPY --from=builder /build/bin/client /client
+COPY --from=builder /build/bin/percentageCalculator /percentageCalculator
 ENTRYPOINT ["/bin/sh"]

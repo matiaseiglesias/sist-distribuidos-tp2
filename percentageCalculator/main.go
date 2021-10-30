@@ -5,10 +5,6 @@ import (
 	"encoding/binary"
 	"strings"
 
-	"github.com/grassmudhorses/vader-go/lexicon"
-	"github.com/grassmudhorses/vader-go/sentitext"
-	"github.com/jszwec/csvutil"
-	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -65,25 +61,11 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func declareQueues(qNames []string, ch *amqp.Channel) {
-	for _, name := range qNames {
-		_, err := ch.QueueDeclare(
-			name,  // name
-			false, // durable
-			false, // delete when unused
-			false, // exclusive
-			false, // no-wait
-			nil,   // arguments
-		)
-		failOnError(err, "Failed to register a consumer")
-	}
-}
-
 func toByteArray(negatives, total int64) []byte {
 	buf := new(bytes.Buffer)
 	tmp := make([]int64, 2)
-	tmp[0] = negatives
-	tmp[1] = total
+	tmp[0] = 100
+	tmp[1] = 64
 	err := binary.Write(buf, binary.LittleEndian, tmp)
 
 	if err != nil {
@@ -112,13 +94,6 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	//err = ch.Qos(
-	//	1,     // prefetch count
-	//	0,     // prefetch size
-	//	false, // global
-	//)
-	//failOnError(err, "Failed to set QoS")
-
 	addr := v.GetString("rabbitQueue.address")
 
 	conn, err := amqp.Dial(addr)
@@ -130,10 +105,15 @@ func main() {
 	defer channel.Close()
 
 	iQ := v.GetString("input")
-	oQ := v.GetString("output")
-	qNames := []string{iQ, oQ}
-
-	declareQueues(qNames, channel)
+	_, err = channel.QueueDeclare(
+		iQ,    // name
+		false, // durable
+		false, // delete when unused
+		false, // exclusive
+		false, // no-wait
+		nil,   // arguments
+	)
+	failOnError(err, "Failed to register a consumer")
 
 	msgs, err := channel.Consume(
 		iQ,    // queue
@@ -148,69 +128,28 @@ func main() {
 
 	forever := make(chan bool)
 
+	n_inputs := 1
 	go func() {
 		i := 0
-		mayor_10 := 0
 		fallas := 0
-		negativos := 0
-		var questions_ []questions.Question
-		running := 0
 		for d := range msgs {
-			if err := csvutil.Unmarshal(d.Body, &questions_); err != nil {
-				log.Println("error:", err)
+
+			msg := make([]int64, 2)
+			buff := bytes.NewBuffer(d.Body)
+			err2 := binary.Read(buff, binary.LittleEndian, msg)
+			if err2 != nil {
+				log.Println("binary.Read failed:", err2)
 				fallas++
-				continue
 			}
 			d.Ack(false)
-			if len(questions_) == 0 {
-				fallas++
-				continue
-			} else if questions.IsEndQuestion(&questions_[0]) {
-				running++
 
-			} else if questions_[0].Score > 10 {
-				mayor_10++
-				parseText := sentitext.Parse(questions_[0].Body, lexicon.DefaultLexicon)
-				result := sentitext.PolarityScore(parseText)
-				if result.Compound < -0.5 {
-					negativos++
-				}
-			}
-
-			if len(questions_) > 1 {
-				log.Fatal("Se recibio mas de un mensaje!!!")
-			}
-
-			if running == 2 {
-				log.Println(" bye bye")
+			i++
+			if i == n_inputs {
+				log.Println("resultado final: ", msg)
+				forever <- false
 				break
 			}
-
-			i += len(questions_)
-			questions_ = nil
-			if i%5000 == 0 {
-				log.Println("mensajes leidos: ", i)
-				log.Println("mensajes mayores a diez: ", mayor_10)
-				log.Println("mensajes fallidos : ", fallas)
-				log.Println("mensajes negativos : ", negativos)
-			}
 		}
-
-		b := toByteArray(int64(negativos), int64(mayor_10))
-
-		err = channel.Publish(
-			"",    // exchange
-			oQ,    // routing key
-			false, // mandatory
-			false,
-			amqp.Publishing{
-				DeliveryMode: amqp.Persistent,
-				ContentType:  "text/plain",
-				Body:         b,
-			})
-		failOnError(err, "Failed to publish a message")
-
-		forever <- false
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")

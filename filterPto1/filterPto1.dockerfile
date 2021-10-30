@@ -9,10 +9,12 @@ LABEL intermediateStageToBeDeleted=true
 
 RUN mkdir -p /build
 WORKDIR /build/
+
+COPY libraries/ ../libraries
 COPY filterPto1/main.go .
 COPY filterPto1/go.mod .
 COPY filterPto1/go.sum .
-#COPY ./client/src ./src
+
 # CGO_ENABLED must be disabled to run go binary in Alpine
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/filterPto1
 
