@@ -1,0 +1,63 @@
+version: '3'
+services:
+  rabbitmq:
+    container_name: rabbitmq
+    image: tp2_rabbitmq:latest
+    ports:
+      - 15672:15672
+
+  producer:
+    container_name: client
+    image: tp2_client:latest
+    volumes:
+      - ./client/files/questions.csv:/files/questions.csv
+      - ./client/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /client
+    #environment:
+    #  - PYTHONUNBUFFERED=1
+    # healthcheck:
+    #     test: ["CMD", "curl", "-f", "http://rabbitmq:15672"]
+    #     interval: 10s
+    #     timeout: 5s
+    #     retries: 10
+
+  consumer1:
+    container_name: input_interface_1
+    image: tp2_input_interface:latest
+    volumes:
+      - ./inputInterface/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /inputInterface 
+  
+  consumer2:
+    container_name: input_interface_2
+    image: tp2_input_interface:latest
+    volumes:
+      - ./inputInterface/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /inputInterface 
+
+  filterPto1:
+    container_name: filter_pto_1
+    image: tp2_filter_pto_1:latest
+    volumes:
+      - ./filterPto1/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /filterPto1   

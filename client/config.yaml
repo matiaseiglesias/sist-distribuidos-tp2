@@ -1,0 +1,7 @@
+filesPath:
+  questions: "/files/questions.csv"
+  answers: "/files/answers.csv"
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+log:
+  level: "info"

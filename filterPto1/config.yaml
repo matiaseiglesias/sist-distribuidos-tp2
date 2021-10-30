@@ -1,0 +1,6 @@
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+input: "punto1"
+output: "dadsa"
+log:
+  level: "info"

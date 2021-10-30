@@ -1,0 +1,8 @@
+destinos: 
+    punto1:
+      - "Body"
+      - "Score"
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+log:
+  level: "info"
