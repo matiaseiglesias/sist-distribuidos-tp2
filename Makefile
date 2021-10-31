@@ -13,6 +13,9 @@ docker-image:
 	docker build -f ./client/producer.dockerfile -t "tp2_client:latest" .
 	docker build -f ./filterPto1/filterPto1.dockerfile -t "tp2_filter_pto_1:latest" .
 	docker build -f ./percentageCalculator/percentageCalculator.dockerfile -t "tp2_percentage_calculator:latest" .
+	docker build -f ./idDelivery/idDelivery.dockerfile -t "tp2_id_delivery:latest" .
+	docker build -f ./groupBy/groupBy.dockerfile -t "tp2_group_by:latest" .
+	docker build -f ./topTenPto2/topTenPto2.dockerfile -t "tp2_top_ten_pto2:latest" .
 	
 	# Execute this command from time to time to clean up intermediate stages generated 
 	# during client build (your hard drive will like this :) ). Don't left uncommented if you 

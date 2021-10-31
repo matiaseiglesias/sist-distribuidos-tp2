@@ -5,8 +5,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/jszwec/csvutil"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/answers"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -89,74 +91,157 @@ func main() {
 	PrintConfig(v)
 
 	queueAddress := v.GetString("rabbitQueue.address")
-	//answers := v.GetString("filesPath.answers")
 	questionsPath := v.GetString("filesPath.questions")
+	answersPath := v.GetString("filesPath.answers")
 
-	conn, err := amqp.Dial(queueAddress)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
+	go func() {
 
-	q, err := ch.QueueDeclare(
-		"input", // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
-	)
-	failOnError(err, "Failed to declare a queue")
+		conn, err := amqp.Dial(queueAddress)
+		failOnError(err, "Failed to connect to RabbitMQ")
+		defer conn.Close()
 
-	questions_, _ := os.Open(questionsPath)
-	r := csv.NewReader(questions_)
-	dec, err := csvutil.NewDecoder(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-	header := dec.Header()
-	log.Println(" header: ", header)
-	i := 0
-	n_error := 0
-	chuncksize := 2
-	tmpQ := []questions.Question{}
-	for {
-		if i%10000 == 0 {
-			log.Println("mensajes enviados: ", i)
+		ch, err := conn.Channel()
+		failOnError(err, "Failed to open a channel")
+		defer ch.Close()
+
+		q, err := ch.QueueDeclare(
+			"input_q", // name
+			false,     // durable
+			false,     // delete when unused
+			false,     // exclusive
+			false,     // no-wait
+			nil,       // arguments
+		)
+		failOnError(err, "Failed to declare a queue")
+
+		questions_, _ := os.Open(questionsPath)
+		r := csv.NewReader(questions_)
+		dec, err := csvutil.NewDecoder(r)
+		if err != nil {
+			log.Fatal(err)
 		}
-		var err error
-		j := 0
-		for j < chuncksize {
-			question := questions.Question{}
-			if err = dec.Decode(&question); err == io.EOF {
-				break
-			} else if err != nil {
-				//log.Info(err)
-				n_error++
-				continue
+		header := dec.Header()
+		log.Println(" header: ", header)
+
+		i := 0
+		n_error := 0
+		chuncksize := 2
+		tmpQ := []questions.Question{}
+		for {
+			if i%10000 == 0 {
+				log.Println("mensajes enviados: ", i)
 			}
-			//log.Print("lei id ", question.Id)
-			//log.Println(" lei UID ", question.OwnerUserId)
-			//log.Println(" lei fecha de cierre ", question.ClosedDate)
-			tmpQ = append(tmpQ, question)
-			i++
-			j++
+			var err error
+			j := 0
+			for j < chuncksize {
+				question := questions.Question{}
+				if err = dec.Decode(&question); err == io.EOF {
+					break
+				} else if err != nil {
+					//log.Info(err)
+					n_error++
+					continue
+				}
+				//log.Print("lei id ", question.Id)
+				//log.Println(" lei UID ", question.OwnerUserId)
+				//log.Println(" lei fecha de cierre ", question.ClosedDate)
+				tmpQ = append(tmpQ, question)
+				i++
+				j++
+			}
+			if err == io.EOF {
+				break
+			}
+			//log.Println("tamaño del chunk ", len(tmpQ))
+			err = questions.Publish(ch, q.Name, tmpQ, 1)
+			tmpQ = nil
+			failOnError(err, "Failed to publish a message")
 		}
-		if err == io.EOF {
-			break
-		}
-		//log.Println("tamaño del chunk ", len(tmpQ))
-		err = questions.Publish(ch, q.Name, tmpQ, 1)
-		tmpQ = nil
+
+		tmpQ = append(tmpQ, questions.EndQuestion())
+		err = questions.Publish(ch, q.Name, tmpQ, 2)
 		failOnError(err, "Failed to publish a message")
-	}
 
-	tmpQ = append(tmpQ, questions.EndQuestion())
-	err = questions.Publish(ch, q.Name, tmpQ, 2)
-	failOnError(err, "Failed to publish a message")
+		log.Info("mensajes mandados:", i)
+		log.Info("errores:", n_error)
+		wg.Done()
+	}()
 
-	log.Info("mensajes mandados:", i)
-	log.Info("errores:", n_error)
+	go func() {
+
+		conn, err := amqp.Dial(queueAddress)
+		failOnError(err, "Failed to connect to RabbitMQ")
+		defer conn.Close()
+
+		ch, err := conn.Channel()
+		failOnError(err, "Failed to open a channel")
+		defer ch.Close()
+
+		q, err := ch.QueueDeclare(
+			"input_a", // name
+			false,     // durable
+			false,     // delete when unused
+			false,     // exclusive
+			false,     // no-wait
+			nil,       // arguments
+		)
+		failOnError(err, "Failed to declare a queue")
+
+		answers_, _ := os.Open(answersPath)
+		r := csv.NewReader(answers_)
+		dec, err := csvutil.NewDecoder(r)
+		if err != nil {
+			log.Fatal(err)
+		}
+		header := dec.Header()
+		log.Println(" header: ", header)
+
+		i := 0
+		n_error := 0
+		chuncksize := 2
+		tmpA := []answers.Answer{}
+		for {
+			if i%10000 == 0 {
+				log.Println("mensajes enviados: ", i)
+			}
+			var err error
+			j := 0
+			for j < chuncksize {
+				answer := answers.Answer{}
+				if err = dec.Decode(&answer); err == io.EOF {
+					break
+				} else if err != nil {
+					//log.Info(err)
+					n_error++
+					continue
+				}
+				//log.Print("lei id ", question.Id)
+				//log.Println(" lei UID ", question.OwnerUserId)
+				//log.Println(" lei fecha de cierre ", question.ClosedDate)
+				tmpA = append(tmpA, answer)
+				i++
+				j++
+			}
+			if err == io.EOF {
+				break
+			}
+			//log.Println("tamaño del chunk ", len(tmpQ))
+			err = answers.Publish(ch, q.Name, tmpA, 1)
+			tmpA = nil
+			failOnError(err, "Failed to publish a message")
+		}
+
+		tmpA = append(tmpA, answers.EndAnswer())
+		err = answers.Publish(ch, q.Name, tmpA, 2)
+		failOnError(err, "Failed to publish a message")
+
+		log.Info("mensajes mandados:", i)
+		log.Info("errores:", n_error)
+		wg.Done()
+	}()
+
+	wg.Wait()
 }

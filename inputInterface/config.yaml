@@ -1,7 +1,14 @@
-destinos: 
-    q_punto1:
-      - "Body"
-      - "Score"
+q_destinies: 
+    #q_punto1:
+    #  - "Body"
+    #  - "Score"
+    q_punto2:
+      - "OwnerUserId"
+      - "Score"  
+a_destinies: 
+    a_punto2:
+      - "OwnerUserId"
+      - "Score"      
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
 log:

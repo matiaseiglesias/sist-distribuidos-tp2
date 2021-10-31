@@ -1,0 +1,9 @@
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+scores_input: "scores_pto_2"
+
+total_input:
+  addr: "total_pto_2"
+  n: 2 #one for questions, another for answers
+log:
+  level: "info"

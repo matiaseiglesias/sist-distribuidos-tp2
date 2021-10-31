@@ -10,7 +10,8 @@ services:
     container_name: client
     image: tp2_client:latest
     volumes:
-      - ./client/files/questions.csv:/files/questions.csv
+      - ./client/files/questions_test.csv:/files/questions.csv
+      - ./client/files/answers_test.csv:/files/answers.csv
       - ./client/config.yaml:/config.yaml
     restart: on-failure
     depends_on:
@@ -18,13 +19,6 @@ services:
     links: 
       - rabbitmq
     entrypoint: /client
-    #environment:
-    #  - PYTHONUNBUFFERED=1
-    # healthcheck:
-    #     test: ["CMD", "curl", "-f", "http://rabbitmq:15672"]
-    #     interval: 10s
-    #     timeout: 5s
-    #     retries: 10
 
   consumer1:
     container_name: input_interface_1
@@ -73,4 +67,40 @@ services:
     links: 
       - rabbitmq
     entrypoint: /percentageCalculator
-  
+
+  idDelivery:
+    container_name: idDelivery
+    image: tp2_id_delivery:latest
+    volumes:
+      - ./idDelivery/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /idDelivery
+
+  groupBy1:
+    container_name: groupBy1
+    image: tp2_group_by:latest
+    volumes:
+      - ./groupBy/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /groupBy 
+
+  topTenPto2:
+    container_name: topTenPto2
+    image: tp2_top_ten_pto2:latest
+    volumes:
+      - ./topTenPto2/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /topTenPto2
+      

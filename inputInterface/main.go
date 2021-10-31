@@ -2,8 +2,10 @@ package main
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/jszwec/csvutil"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/answers"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -50,7 +52,7 @@ func PrintConfig(v *viper.Viper) {
 
 	log.Infof("Filter configuration")
 	log.Infof("rabbit queue address: %s", v.GetString("rabbitQueue.address"))
-	destinos := v.GetStringMapStringSlice("destinos")
+	destinos := v.GetStringMapStringSlice("q_destinies")
 	for key, element := range destinos {
 		log.Println("clave: ", key)
 		log.Println("	valor: ", element)
@@ -129,32 +131,34 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	destinos := v.GetStringMapStringSlice("destinos")
-	queueNames := getKeys(destinos)
-
-	channel := initRabbitQueues(ADDR, queueNames)
-
-	err = channel.Qos(
-		1,     // prefetch count
-		0,     // prefetch size
-		false, // global
-	)
-	failOnError(err, "Failed to set QoS")
-
-	msgs, err := channel.Consume(
-		"input", // queue
-		"",      // consumer
-		false,   // auto-ack
-		false,   // exclusive
-		false,   // no-local
-		false,   // no-wait
-		nil,     // args
-	)
-	failOnError(err, "Failed to register a consumer")
-
-	forever := make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	go func() {
+
+		destinos := v.GetStringMapStringSlice("q_destinies")
+		queueNames := getKeys(destinos)
+
+		channel := initRabbitQueues(ADDR, queueNames)
+
+		err = channel.Qos(
+			1,     // prefetch count
+			0,     // prefetch size
+			false, // global
+		)
+		failOnError(err, "Failed to set QoS")
+
+		msgs, err := channel.Consume(
+			"input_q", // queue
+			"",        // consumer
+			false,     // auto-ack
+			false,     // exclusive
+			false,     // no-local
+			false,     // no-wait
+			nil,       // args
+		)
+		failOnError(err, "Failed to register a consumer")
+
 		i := 0
 		fallas := 0
 		var questions_ []questions.Question
@@ -192,13 +196,81 @@ func main() {
 			}
 			if !running {
 				log.Println(" bye bye")
-				forever <- false
 				break
 			}
 		}
+		wg.Done()
+	}()
+
+	go func() {
+
+		destinos := v.GetStringMapStringSlice("a_destinies")
+		queueNames := getKeys(destinos)
+
+		channel := initRabbitQueues(ADDR, queueNames)
+
+		err = channel.Qos(
+			1,     // prefetch count
+			0,     // prefetch size
+			false, // global
+		)
+		failOnError(err, "Failed to set QoS")
+
+		msgs, err := channel.Consume(
+			"input_a", // queue
+			"",        // consumer
+			false,     // auto-ack
+			false,     // exclusive
+			false,     // no-local
+			false,     // no-wait
+			nil,       // args
+		)
+		failOnError(err, "Failed to register a consumer")
+
+		i := 0
+		fallas := 0
+		var answers_ []answers.Answer
+		running := true
+		times := 1
+		for d := range msgs {
+			if err := csvutil.Unmarshal(d.Body, &answers_); err != nil {
+				log.Println("error:", err)
+				fallas++
+				continue
+			}
+			d.Ack(false)
+			for destino, columns := range destinos {
+				for _, readA := range answers_ {
+
+					var filterA []answers.Answer
+					if answers.IsEndAnswer(&readA) {
+						log.Println("recibi un mensaje de stop")
+						running = false
+						filterA = []answers.Answer{readA}
+						times = 1
+					} else {
+						filterA = []answers.Answer{answers.Filter(readA, columns)}
+					}
+					err = answers.Publish(channel, destino, filterA, times)
+					failOnError(err, "Failed to publish a message")
+
+				}
+			}
+			i += len(answers_)
+			answers_ = nil
+			if i%5000 == 0 {
+				log.Println("[Filtro]mensajes leidos: ", i)
+				log.Println("[Filtro]mensajes fallidos: ", fallas)
+			}
+			if !running {
+				log.Println(" bye bye")
+				break
+			}
+		}
+		wg.Done()
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+	wg.Wait()
 	log.Printf(" [*] Closing input interface")
 }
