@@ -1,0 +1,5 @@
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+gb_input: "gb_output"
+log:
+  level: "info"

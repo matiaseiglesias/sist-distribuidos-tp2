@@ -10,7 +10,7 @@ services:
     container_name: client
     image: tp2_client:latest
     volumes:
-      - ./client/files/questions_test.csv:/files/questions.csv
+      - ./client/files/questions.csv:/files/questions.csv
       - ./client/files/answers_test.csv:/files/answers.csv
       - ./client/config.yaml:/config.yaml
     restart: on-failure
@@ -103,4 +103,39 @@ services:
     links: 
       - rabbitmq
     entrypoint: /topTenPto2
-      
+
+  join:
+    container_name: join
+    image: tp2_join:latest
+    volumes:
+      - ./join/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /join
+  
+  duobleGroupBy:
+    container_name: duobleGroupBy
+    image: tp2_duoble_group_by:latest
+    volumes:
+      - ./duobleGroupBy/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /duobleGroupBy  
+  
+  topTenPto3:
+    container_name: topTenPto3
+    image: tp2_top_ten_pto3:latest
+    volumes:
+      - ./topTenPto3/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /topTenPto3    

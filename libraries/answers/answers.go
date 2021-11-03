@@ -16,7 +16,7 @@ type Answer struct {
 	Id           int64     `csv:"Id"`
 	OwnerUserId  float64   `csv:"OwnerUserId"`
 	CreationDate time.Time `csv:"CreationDate"`
-	ParentId     int64     `csv:"ClosedDate"`
+	ParentId     int64     `csv:"ParentId"`
 	Score        int64     `csv:"Score"`
 	Body         string    `csv:"Body"`
 }

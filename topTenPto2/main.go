@@ -235,7 +235,7 @@ func main() {
 		//if qScore > float64(scoresAverage["questions"]) && aScore > float64(scoresAverage["answers"]) {
 		item := &Item{
 			id:       userId,
-			priority: (qScore + aScore) * (-1), //the negative of the score
+			priority: qScore + aScore, //the negative of the score
 		}
 		heap.Push(&pq, item)
 		//}

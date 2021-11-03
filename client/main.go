@@ -9,15 +9,12 @@ import (
 
 	"github.com/jszwec/csvutil"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/answers"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 )
-
-//const QPATH = "/files/questions.csv"
-//const ADDR = "amqp://guest:guest@tp2_rabbitmq_1:5672/"
 
 func InitConfig() (*viper.Viper, error) {
 	v := viper.New()
@@ -90,7 +87,7 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	queueAddress := v.GetString("rabbitQueue.address")
+	addr := v.GetString("rabbitQueue.address")
 	questionsPath := v.GetString("filesPath.questions")
 	answersPath := v.GetString("filesPath.answers")
 
@@ -99,23 +96,15 @@ func main() {
 
 	go func() {
 
-		conn, err := amqp.Dial(queueAddress)
+		rabbitConn := conn.Init(addr)
+		conn_, err := rabbitConn.Connect()
 		failOnError(err, "Failed to connect to RabbitMQ")
-		defer conn.Close()
+		if !conn_ {
+			log.Println("error while trying to connect to RabbitMQ, exiting...")
+		}
 
-		ch, err := conn.Channel()
-		failOnError(err, "Failed to open a channel")
-		defer ch.Close()
-
-		q, err := ch.QueueDeclare(
-			"input_q", // name
-			false,     // durable
-			false,     // delete when unused
-			false,     // exclusive
-			false,     // no-wait
-			nil,       // arguments
-		)
-		failOnError(err, "Failed to declare a queue")
+		queues := []string{"input_q", "end_2_1_q"}
+		rabbitConn.RegisterQueues(queues, true)
 
 		questions_, _ := os.Open(questionsPath)
 		r := csv.NewReader(questions_)
@@ -130,14 +119,14 @@ func main() {
 		n_error := 0
 		chuncksize := 2
 		tmpQ := []questions.Question{}
+		var question questions.Question
 		for {
-			if i%10000 == 0 {
+			if i%100000 == 0 {
 				log.Println("mensajes enviados: ", i)
 			}
 			var err error
 			j := 0
 			for j < chuncksize {
-				question := questions.Question{}
 				if err = dec.Decode(&question); err == io.EOF {
 					break
 				} else if err != nil {
@@ -145,50 +134,46 @@ func main() {
 					n_error++
 					continue
 				}
-				//log.Print("lei id ", question.Id)
-				//log.Println(" lei UID ", question.OwnerUserId)
-				//log.Println(" lei fecha de cierre ", question.ClosedDate)
 				tmpQ = append(tmpQ, question)
 				i++
 				j++
 			}
+
+			//log.Println("tamaño del chunk ", len(tmpQ))
+			err2 := questions.Publish(rabbitConn.Channel, queues[0], tmpQ, 1)
+			tmpQ = nil
+			failOnError(err2, "Failed to publish a message")
 			if err == io.EOF {
 				break
 			}
-			//log.Println("tamaño del chunk ", len(tmpQ))
-			err = questions.Publish(ch, q.Name, tmpQ, 1)
-			tmpQ = nil
-			failOnError(err, "Failed to publish a message")
 		}
 
 		tmpQ = append(tmpQ, questions.EndQuestion())
-		err = questions.Publish(ch, q.Name, tmpQ, 2)
+		log.Println(" voy a mandar una endQuestion con id ", tmpQ[0].Id)
+		err = questions.Publish(rabbitConn.Channel, queues[0], tmpQ, 1)
 		failOnError(err, "Failed to publish a message")
 
-		log.Info("mensajes mandados:", i)
+		endSignalInput, _ := rabbitConn.Input("end_2_1_q")
+		s := <-endSignalInput
+		s.Ack(false)
+
+		log.Info("sent questions:", i)
 		log.Info("errores:", n_error)
+		rabbitConn.Close()
 		wg.Done()
 	}()
 
 	go func() {
 
-		conn, err := amqp.Dial(queueAddress)
+		rabbitConn := conn.Init(addr)
+		conn_, err := rabbitConn.Connect()
 		failOnError(err, "Failed to connect to RabbitMQ")
-		defer conn.Close()
+		if !conn_ {
+			log.Println("error while trying to connect to RabbitMQ, exiting...")
+		}
 
-		ch, err := conn.Channel()
-		failOnError(err, "Failed to open a channel")
-		defer ch.Close()
-
-		q, err := ch.QueueDeclare(
-			"input_a", // name
-			false,     // durable
-			false,     // delete when unused
-			false,     // exclusive
-			false,     // no-wait
-			nil,       // arguments
-		)
-		failOnError(err, "Failed to declare a queue")
+		queues := []string{"input_a", "end_2_1_a"}
+		rabbitConn.RegisterQueues(queues, true)
 
 		answers_, _ := os.Open(answersPath)
 		r := csv.NewReader(answers_)
@@ -218,28 +203,30 @@ func main() {
 					n_error++
 					continue
 				}
-				//log.Print("lei id ", question.Id)
-				//log.Println(" lei UID ", question.OwnerUserId)
-				//log.Println(" lei fecha de cierre ", question.ClosedDate)
 				tmpA = append(tmpA, answer)
 				i++
 				j++
 			}
+			//log.Println("tamaño del chunk ", len(tmpQ))
+			err2 := answers.Publish(rabbitConn.Channel, queues[0], tmpA, 1)
+			tmpA = nil
+			failOnError(err2, "Failed to publish a message")
 			if err == io.EOF {
 				break
 			}
-			//log.Println("tamaño del chunk ", len(tmpQ))
-			err = answers.Publish(ch, q.Name, tmpA, 1)
-			tmpA = nil
-			failOnError(err, "Failed to publish a message")
 		}
 
 		tmpA = append(tmpA, answers.EndAnswer())
-		err = answers.Publish(ch, q.Name, tmpA, 2)
+		err = answers.Publish(rabbitConn.Channel, queues[0], tmpA, 1)
 		failOnError(err, "Failed to publish a message")
 
-		log.Info("mensajes mandados:", i)
+		endSignalInput, _ := rabbitConn.Input("end_2_1_a")
+		s := <-endSignalInput
+		s.Ack(false)
+
+		log.Info("sent answers:", i)
 		log.Info("errores:", n_error)
+		rabbitConn.Close()
 		wg.Done()
 	}()
 

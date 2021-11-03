@@ -4,18 +4,17 @@ import (
 	"bytes"
 	"encoding/binary"
 	"strings"
+	"sync"
 
 	"github.com/grassmudhorses/vader-go/lexicon"
 	"github.com/grassmudhorses/vader-go/sentitext"
 	"github.com/jszwec/csvutil"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 )
-
-//const ADDR = "amqp://guest:guest@rabbitmq:5672/"
 
 func InitLogger(logLevel string) error {
 	level, err := log.ParseLevel(logLevel)
@@ -56,27 +55,8 @@ func PrintConfig(v *viper.Viper) {
 	log.Infof("rabbit queue address : %s", v.GetString("rabbitQueue.address"))
 	log.Infof("rabbit queue input : %s", v.GetString("input"))
 	log.Infof("rabbit queue output : %s", v.GetString("output"))
+	log.Infof("end signal output queue : %s", v.GetString("endSignal.output.questions.qname"))
 	log.Infof("Log Level: %s", v.GetString("log.level"))
-}
-
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
-	}
-}
-
-func declareQueues(qNames []string, ch *amqp.Channel) {
-	for _, name := range qNames {
-		_, err := ch.QueueDeclare(
-			name,  // name
-			false, // durable
-			false, // delete when unused
-			false, // exclusive
-			false, // no-wait
-			nil,   // arguments
-		)
-		failOnError(err, "Failed to register a consumer")
-	}
 }
 
 func toByteArray(negatives, total int64) []byte {
@@ -95,9 +75,7 @@ func toByteArray(negatives, total int64) []byte {
 func main() {
 
 	log.Println("starting inputInterface")
-
 	//time.Sleep(70 * time.Second)
-
 	log.Println("ready to go")
 
 	v, err := InitConfig()
@@ -112,41 +90,26 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	//err = ch.Qos(
-	//	1,     // prefetch count
-	//	0,     // prefetch size
-	//	false, // global
-	//)
-	//failOnError(err, "Failed to set QoS")
-
 	addr := v.GetString("rabbitQueue.address")
 
-	conn, err := amqp.Dial(addr)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	channel, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer channel.Close()
-
+	rabbitConn := conn.Init(addr)
+	conn_, err := rabbitConn.Connect()
+	conn.FailOnError(err, "Failed to connect to RabbitMQ")
+	if !conn_ {
+		log.Println("error while trying to connect to RabbitMQ, exiting...")
+	}
 	iQ := v.GetString("input")
 	oQ := v.GetString("output")
-	qNames := []string{iQ, oQ}
+	endQSignalOutput := v.GetString("endSignal.output.questions.qname")
+	queuesName := []string{iQ, oQ, endQSignalOutput}
 
-	declareQueues(qNames, channel)
+	rabbitConn.RegisterQueues(queuesName, true)
 
-	msgs, err := channel.Consume(
-		iQ,    // queue
-		"",    // consumer
-		false, // auto-ack
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
-		nil,   // args
-	)
-	failOnError(err, "Failed to register a consumer")
+	msgs, err := rabbitConn.Input(iQ)
+	conn.FailOnError(err, "Failed to register a consumer")
 
-	forever := make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	go func() {
 		i := 0
@@ -181,14 +144,14 @@ func main() {
 				log.Fatal("Se recibio mas de un mensaje!!!")
 			}
 
-			if running == 2 {
+			if running == 1 {
 				log.Println(" bye bye")
 				break
 			}
 
 			i += len(questions_)
 			questions_ = nil
-			if i%5000 == 0 {
+			if i%100000 == 0 {
 				log.Println("mensajes leidos: ", i)
 				log.Println("mensajes mayores a diez: ", mayor_10)
 				log.Println("mensajes fallidos : ", fallas)
@@ -196,23 +159,16 @@ func main() {
 			}
 		}
 
+		rabbitConn.SendEndSync(endQSignalOutput, "Filter pto1", 1)
+
 		b := toByteArray(int64(negativos), int64(mayor_10))
 
-		err = channel.Publish(
-			"",    // exchange
-			oQ,    // routing key
-			false, // mandatory
-			false,
-			amqp.Publishing{
-				DeliveryMode: amqp.Persistent,
-				ContentType:  "text/plain",
-				Body:         b,
-			})
-		failOnError(err, "Failed to publish a message")
+		err = rabbitConn.Publish(oQ, b)
+		conn.FailOnError(err, "Failed to publish a message")
 
-		forever <- false
+		wg.Done()
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+	wg.Wait()
 }

@@ -6,14 +6,12 @@ import (
 
 	"github.com/jszwec/csvutil"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/answers"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 )
-
-const ADDR = "amqp://guest:guest@rabbitmq:5672/"
 
 func InitLogger(logLevel string) error {
 	level, err := log.ParseLevel(logLevel)
@@ -57,48 +55,13 @@ func PrintConfig(v *viper.Viper) {
 		log.Println("clave: ", key)
 		log.Println("	valor: ", element)
 	}
+	log.Infof("input questions queue", v.GetString("input.questions"))
+	log.Infof("input answers queue", v.GetString("input.answers"))
+	log.Infof("input questions end signals ", v.GetString("endSignal.input.questions.qname"))
+	log.Infof("output questions end signals rabbit questions output queue", v.GetString("endSignal.output.questions.qname"))
+	log.Infof("input answers end signals ", v.GetString("endSignal.input.answers.qname"))
+	log.Infof("output answers end signals ", v.GetString("endSignal.output.answers.qname"))
 	log.Infof("Log Level: %s", v.GetString("log.level"))
-}
-
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
-	}
-}
-
-func initRabbitQueues(addr string, names []string) *amqp.Channel {
-
-	conn, err := amqp.Dial(addr)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	//defer conn.Close()
-
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	//defer ch.Close()
-
-	_, err = ch.QueueDeclare(
-		"input", // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
-	)
-	failOnError(err, "Failed to open a channel")
-
-	for _, name := range names {
-		_, err := ch.QueueDeclare(
-			name,  // name
-			false, // durable
-			false, // delete when unused
-			false, // exclusive
-			false, // no-wait
-			nil,   // arguments
-		)
-		failOnError(err, "Failed to open a channel")
-
-	}
-	return ch
 }
 
 func getKeys(myMap map[string][]string) []string {
@@ -138,26 +101,31 @@ func main() {
 
 		destinos := v.GetStringMapStringSlice("q_destinies")
 		queueNames := getKeys(destinos)
+		addr := v.GetString("rabbitQueue.address")
 
-		channel := initRabbitQueues(ADDR, queueNames)
+		rabbitConn := conn.Init(addr)
+		conn_, err := rabbitConn.Connect()
+		conn.FailOnError(err, "Failed to connect to RabbitMQ")
+		if !conn_ {
+			log.Println("error while trying to connect to RabbitMQ, exiting...")
+		}
 
-		err = channel.Qos(
-			1,     // prefetch count
-			0,     // prefetch size
-			false, // global
-		)
-		failOnError(err, "Failed to set QoS")
+		//err = channel.Qos(
+		//	1,     // prefetch count
+		//	0,     // prefetch size
+		//	false, // global
+		//)
+		//failOnError(err, "Failed to set QoS")
+		qInputName := v.GetString("input.questions")
+		endSignalInput := v.GetString("endSignal.input.questions.qname")
+		endSignalOutput := v.GetString("endSignal.output.questions.qname")
 
-		msgs, err := channel.Consume(
-			"input_q", // queue
-			"",        // consumer
-			false,     // auto-ack
-			false,     // exclusive
-			false,     // no-local
-			false,     // no-wait
-			nil,       // args
-		)
-		failOnError(err, "Failed to register a consumer")
+		queueNames = append(queueNames, qInputName, endSignalInput, endSignalOutput)
+
+		rabbitConn.RegisterQueues(queueNames, true)
+
+		msgs, err := rabbitConn.Input(qInputName)
+		conn.FailOnError(err, "Failed to register a consumer")
 
 		i := 0
 		fallas := 0
@@ -165,16 +133,19 @@ func main() {
 		running := true
 		times := 1
 		for d := range msgs {
+
 			if err := csvutil.Unmarshal(d.Body, &questions_); err != nil {
 				log.Println("error:", err)
 				fallas++
+				d.Ack(false)
 				continue
 			}
-			d.Ack(false)
+
 			for destino, columns := range destinos {
 				for _, readQ := range questions_ {
 
 					var filterQ []questions.Question
+
 					if questions.IsEndQuestion(&readQ) {
 						log.Println("recibi un mensaje de stop")
 						running = false
@@ -183,22 +154,30 @@ func main() {
 					} else {
 						filterQ = []questions.Question{questions.Filter(readQ, columns)}
 					}
-					err = questions.Publish(channel, destino, filterQ, times)
-					failOnError(err, "Failed to publish a message")
+					err = questions.Publish(rabbitConn.Channel, destino, filterQ, times)
+					conn.FailOnError(err, "Failed to publish a message")
 
 				}
 			}
+			d.Ack(false)
 			i += len(questions_)
 			questions_ = nil
-			if i%5000 == 0 {
-				log.Println("[Filtro]mensajes leidos: ", i)
-				log.Println("[Filtro]mensajes fallidos: ", fallas)
+			if i%100000 == 0 {
+				log.Println("[Filter]Read questions: ", i)
+				log.Println("[Filter]fail questions: ", fallas)
 			}
 			if !running {
-				log.Println(" bye bye")
+				log.Println(" bye bye questions")
 				break
 			}
 		}
+		rabbitConn.SendEndSync(endSignalOutput, "Filter", 1)
+
+		//log.Println(" waiting question end signal in:", endSignalInput)
+		endS, _ := rabbitConn.Input(endSignalInput)
+		s := <-endS
+		s.Ack(false)
+		rabbitConn.Close()
 		wg.Done()
 	}()
 
@@ -206,26 +185,33 @@ func main() {
 
 		destinos := v.GetStringMapStringSlice("a_destinies")
 		queueNames := getKeys(destinos)
+		addr := v.GetString("rabbitQueue.address")
 
-		channel := initRabbitQueues(ADDR, queueNames)
+		rabbitConn := conn.Init(addr)
+		conn_, err := rabbitConn.Connect()
+		conn.FailOnError(err, "Failed to connect to RabbitMQ")
+		if !conn_ {
+			log.Println("error while trying to connect to RabbitMQ, exiting...")
+		}
 
-		err = channel.Qos(
-			1,     // prefetch count
-			0,     // prefetch size
-			false, // global
-		)
-		failOnError(err, "Failed to set QoS")
+		qInputName := v.GetString("input.answers")
+		endSignalInput := v.GetString("endSignal.input.answers.qname")
+		endSignalOutput := v.GetString("endSignal.output.answers.qname")
 
-		msgs, err := channel.Consume(
-			"input_a", // queue
-			"",        // consumer
-			false,     // auto-ack
-			false,     // exclusive
-			false,     // no-local
-			false,     // no-wait
-			nil,       // args
-		)
-		failOnError(err, "Failed to register a consumer")
+		queueNames = append(queueNames, qInputName, endSignalInput, endSignalOutput)
+
+		rabbitConn.RegisterQueues(queueNames, true)
+
+		if len(destinos) == 0 {
+			log.Println("No answers output")
+			rabbitConn.SendEndSync(endSignalOutput, "Filter", 1)
+			rabbitConn.Close()
+			wg.Done()
+			return
+		}
+
+		msgs, err := rabbitConn.Input(qInputName)
+		conn.FailOnError(err, "Failed to register a consumer")
 
 		i := 0
 		fallas := 0
@@ -233,12 +219,13 @@ func main() {
 		running := true
 		times := 1
 		for d := range msgs {
+
 			if err := csvutil.Unmarshal(d.Body, &answers_); err != nil {
 				log.Println("error:", err)
 				fallas++
+				d.Ack(false)
 				continue
 			}
-			d.Ack(false)
 			for destino, columns := range destinos {
 				for _, readA := range answers_ {
 
@@ -251,22 +238,30 @@ func main() {
 					} else {
 						filterA = []answers.Answer{answers.Filter(readA, columns)}
 					}
-					err = answers.Publish(channel, destino, filterA, times)
-					failOnError(err, "Failed to publish a message")
+					err = answers.Publish(rabbitConn.Channel, destino, filterA, times)
+					conn.FailOnError(err, "Failed to publish a message")
 
 				}
 			}
+			d.Ack(false)
 			i += len(answers_)
 			answers_ = nil
-			if i%5000 == 0 {
-				log.Println("[Filtro]mensajes leidos: ", i)
-				log.Println("[Filtro]mensajes fallidos: ", fallas)
+			if i%100000 == 0 {
+				log.Println("[Filter]read answers: ", i)
+				log.Println("[Filter]fail answers: ", fallas)
 			}
 			if !running {
-				log.Println(" bye bye")
+				log.Println(" bye bye answers")
 				break
 			}
 		}
+		rabbitConn.SendEndSync(endSignalOutput, "Filter", 1)
+
+		//log.Println(" waiting answer end signal in:", endSignalInput)
+		endS, _ := rabbitConn.Input(endSignalInput)
+		s := <-endS
+		s.Ack(false)
+		rabbitConn.Close()
 		wg.Done()
 	}()
 

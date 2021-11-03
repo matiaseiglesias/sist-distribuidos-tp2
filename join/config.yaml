@@ -1,0 +1,19 @@
+q_input: "q_punto3"
+a_input: "a_punto3"
+join_output: "join_output"
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+
+endSignal:
+  input: 
+      qname: "end_join"
+      nsignals: 1  
+  output:
+    questions:
+      qname: "end_3_2_q"
+      nsignals: 1
+    answers:
+      qname: "end_3_2_a"
+      nsignals: 1    
+log:
+  level: "info"
