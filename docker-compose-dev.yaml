@@ -138,4 +138,16 @@ services:
       - rabbitmq
     links: 
       - rabbitmq
-    entrypoint: /topTenPto3    
+    entrypoint: /topTenPto3   
+
+  endSyncronizer:
+    container_name: endSyncronizer
+    image: tp2_end_syncronizer:latest
+    volumes:
+      - ./endSyncronizer/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /endSyncronizer      

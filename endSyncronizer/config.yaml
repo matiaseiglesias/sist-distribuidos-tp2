@@ -1,0 +1,33 @@
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+endOutputs:
+    end_q_client:
+      out: "input_q"  
+      n_in: 1
+      n_out: "2"
+    end_a_client:
+      out: "input_a"  
+      n_in: 1
+      n_out: "2"
+    end_q_i_interface:
+      out: "q_punto3 q_punto2"
+      n_in: 2
+      n_out: "1 2"  
+    end_a_i_interface:
+      out: "a_punto3"
+      n_in: 1
+      n_out: "1"    
+    end_joiner:
+      out: "join_output"  
+      n_in: 1
+      n_out: "1"
+    end_d_gb:
+      out: "gb_output"  
+      n_in: 1
+      n_out: "1"    
+
+input:
+  end: "end_syncronizer"
+
+log:
+  level: "info"

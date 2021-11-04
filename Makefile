@@ -19,6 +19,7 @@ docker-image:
 	docker build -f ./join/join.dockerfile -t "tp2_join:latest" .
 	docker build -f ./duobleGroupBy/duobleGroupBy.dockerfile -t "tp2_duoble_group_by:latest" .
 	docker build -f ./topTenPto3/topTenPto3.dockerfile -t "tp2_top_ten_pto3:latest" .
+	docker build -f ./endSyncronizer/endSyncronizer.dockerfile -t "tp2_end_syncronizer:latest" .
 	
 	# Execute this command from time to time to clean up intermediate stages generated 
 	# during client build (your hard drive will like this :) ). Don't left uncommented if you 
