@@ -3,5 +3,10 @@ filesPath:
   answers: "/files/answers.csv"
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
+  answers: "input_a"
+  questions: "input_q"
+  end_q_signal: "end_q_client"
+  end_a_signal: "end_a_client"
+
 log:
   level: "info"

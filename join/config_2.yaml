@@ -1,5 +1,5 @@
-q_input: "q_punto3"
-a_input: "a_punto3"
+q_input: "q_punto3_2"
+a_input: "a_punto3_2"
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
 

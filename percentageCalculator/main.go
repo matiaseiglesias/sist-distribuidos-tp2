@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"strings"
+	"sync"
 
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 )
 
 //const ADDR = "amqp://guest:guest@rabbitmq:5672/"
@@ -55,32 +56,9 @@ func PrintConfig(v *viper.Viper) {
 	log.Infof("Log Level: %s", v.GetString("log.level"))
 }
 
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
-	}
-}
-
-func toByteArray(negatives, total int64) []byte {
-	buf := new(bytes.Buffer)
-	tmp := make([]int64, 2)
-	tmp[0] = 100
-	tmp[1] = 64
-	err := binary.Write(buf, binary.LittleEndian, tmp)
-
-	if err != nil {
-		return nil
-	}
-	return buf.Bytes()
-}
-
 func main() {
 
 	log.Println("starting inputInterface")
-
-	//time.Sleep(70 * time.Second)
-
-	log.Println("ready to go")
 
 	v, err := InitConfig()
 	if err != nil {
@@ -96,42 +74,26 @@ func main() {
 
 	addr := v.GetString("rabbitQueue.address")
 
-	conn, err := amqp.Dial(addr)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
+	rabbitConn := conn.Init(addr)
+	conn_, err := rabbitConn.Connect()
+	conn.FailOnError(err, "Failed to connect to RabbitMQ")
+	if !conn_ {
+		log.Println("error while trying to connect to RabbitMQ, exiting...")
+	}
 
-	channel, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer channel.Close()
+	iA := v.GetString("input")
+	rabbitConn.RegisterQueues([]string{iA}, true)
 
-	iQ := v.GetString("input")
-	_, err = channel.QueueDeclare(
-		iQ,    // name
-		false, // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-	failOnError(err, "Failed to register a consumer")
+	msgs, err := rabbitConn.Input(iA)
+	conn.FailOnError(err, "Failed to register a consumer")
 
-	msgs, err := channel.Consume(
-		iQ,    // queue
-		"",    // consumer
-		false, // auto-ack
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
-		nil,   // args
-	)
-	failOnError(err, "Failed to register a consumer")
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	forever := make(chan bool)
-
-	n_inputs := 1
 	go func() {
 		i := 0
-		fallas := 0
+		failures := 0
+		results := [][]int64{}
 		for d := range msgs {
 
 			msg := make([]int64, 2)
@@ -139,19 +101,35 @@ func main() {
 			err2 := binary.Read(buff, binary.LittleEndian, msg)
 			if err2 != nil {
 				log.Println("binary.Read failed:", err2)
-				fallas++
+				failures++
+				d.Ack(false)
+				continue
 			}
 			d.Ack(false)
-
-			i++
-			if i == n_inputs {
-				log.Println("resultado final: ", msg)
-				forever <- false
+			if msg[0] == -1 && msg[1] == -1 {
 				break
 			}
+			results = append(results, msg)
+			i++
 		}
+		negatives := int64(0)
+		greater10 := int64(0)
+		for _, result := range results {
+			negatives += result[0]
+			greater10 += result[1]
+		}
+		log.Printf("final result, negatives > 10: %d, total > 10: %d \n", negatives, greater10)
+		if greater10 > 0 {
+			log.Println("final result, percentage: ", (negatives/greater10)*100)
+		} else {
+			log.Println("final result, percentage: 0%")
+		}
+
+		rabbitConn.Close()
+		wg.Done()
 	}()
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+	wg.Wait()
+	log.Printf(" [*] Closing percentageCalculator")
 }

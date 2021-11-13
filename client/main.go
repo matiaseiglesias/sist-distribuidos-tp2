@@ -45,6 +45,12 @@ func PrintConfig(v *viper.Viper) {
 	log.Infof("rabbit queue address: %s", v.GetString("rabbitQueue.address"))
 	log.Infof("questions file path: %s", v.GetString("filesPath.questions"))
 	log.Infof("answers file path: %s", v.GetString("filesPath.answers"))
+	log.Infof("questions output queue: %s", v.GetString("rabbitQueue.questions"))
+	log.Infof("answers output queue: %s", v.GetString("rabbitQueue.answers"))
+
+	log.Infof("questions end signal queue: %s", v.GetString("rabbitQueue.end_q_signal"))
+	log.Infof("answers end signal queue: %s", v.GetString("rabbitQueue.end_a_signal"))
+
 	log.Infof("Log Level: %s", v.GetString("log.level"))
 }
 
@@ -58,22 +64,10 @@ func InitLogger(logLevel string) error {
 	return nil
 }
 
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
-	}
-}
-
-//func syncQRabbit() {
-//
-//	log.Info("starting client")
-//	time.Sleep(70 * time.Second)
-//	log.Info("ready to go")
-//}
-
 func main() {
 
-	//syncQRabbit()
+	log.Info("starting client")
+	log.Info("ready to go")
 
 	v, err := InitConfig()
 	if err != nil {
@@ -88,22 +82,24 @@ func main() {
 	PrintConfig(v)
 
 	addr := v.GetString("rabbitQueue.address")
-	questionsPath := v.GetString("filesPath.questions")
-	answersPath := v.GetString("filesPath.answers")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
 
+		questionsPath := v.GetString("filesPath.questions")
+		qQName := v.GetString("rabbitQueue.questions")
+		qEndSignal := v.GetString("rabbitQueue.end_q_signal")
+
 		rabbitConn := conn.Init(addr)
 		conn_, err := rabbitConn.Connect()
-		failOnError(err, "Failed to connect to RabbitMQ")
+		conn.FailOnError(err, "Failed to connect to RabbitMQ")
 		if !conn_ {
 			log.Println("error while trying to connect to RabbitMQ, exiting...")
 		}
 
-		queues := []string{"input_q", "end_2_1_q"}
+		queues := []string{qQName, qEndSignal}
 		rabbitConn.RegisterQueues(queues, true)
 
 		questions_, _ := os.Open(questionsPath)
@@ -142,7 +138,7 @@ func main() {
 			//log.Println("tamaño del chunk ", len(tmpQ))
 			err2 := questions.Publish(rabbitConn.Channel, queues[0], tmpQ, 1)
 			tmpQ = nil
-			failOnError(err2, "Failed to publish a message")
+			conn.FailOnError(err2, "Failed to publish a message")
 			if err == io.EOF {
 				break
 			}
@@ -150,12 +146,12 @@ func main() {
 
 		tmpQ = append(tmpQ, questions.EndQuestion())
 		log.Println(" voy a mandar una endQuestion con id ", tmpQ[0].Id)
-		err = questions.Publish(rabbitConn.Channel, queues[0], tmpQ, 1)
-		failOnError(err, "Failed to publish a message")
+		err = questions.Publish(rabbitConn.Channel, qEndSignal, tmpQ, 1)
+		conn.FailOnError(err, "Failed to publish a message")
 
-		endSignalInput, _ := rabbitConn.Input("end_2_1_q")
-		s := <-endSignalInput
-		s.Ack(false)
+		//endSignalInput, _ := rabbitConn.Input("end_2_1_q")
+		//s := <-endSignalInput
+		//s.Ack(false)
 
 		log.Info("sent questions:", i)
 		log.Info("errores:", n_error)
@@ -165,14 +161,18 @@ func main() {
 
 	go func() {
 
+		answersPath := v.GetString("filesPath.answers")
+		aQName := v.GetString("rabbitQueue.answers")
+		qEndSignal := v.GetString("rabbitQueue.end_a_signal")
+
 		rabbitConn := conn.Init(addr)
 		conn_, err := rabbitConn.Connect()
-		failOnError(err, "Failed to connect to RabbitMQ")
+		conn.FailOnError(err, "Failed to connect to RabbitMQ")
 		if !conn_ {
 			log.Println("error while trying to connect to RabbitMQ, exiting...")
 		}
 
-		queues := []string{"input_a", "end_2_1_a"}
+		queues := []string{aQName, qEndSignal}
 		rabbitConn.RegisterQueues(queues, true)
 
 		answers_, _ := os.Open(answersPath)
@@ -208,21 +208,21 @@ func main() {
 				j++
 			}
 			//log.Println("tamaño del chunk ", len(tmpQ))
-			err2 := answers.Publish(rabbitConn.Channel, queues[0], tmpA, 1)
+			err2 := answers.Publish(rabbitConn.Channel, aQName, tmpA, 1)
 			tmpA = nil
-			failOnError(err2, "Failed to publish a message")
+			conn.FailOnError(err2, "Failed to publish a message")
 			if err == io.EOF {
 				break
 			}
 		}
 
 		tmpA = append(tmpA, answers.EndAnswer())
-		err = answers.Publish(rabbitConn.Channel, queues[0], tmpA, 1)
-		failOnError(err, "Failed to publish a message")
+		err = answers.Publish(rabbitConn.Channel, qEndSignal, tmpA, 1)
+		conn.FailOnError(err, "Failed to publish a message")
 
-		endSignalInput, _ := rabbitConn.Input("end_2_1_a")
-		s := <-endSignalInput
-		s.Ack(false)
+		//endSignalInput, _ := rabbitConn.Input("end_2_1_a")
+		//s := <-endSignalInput
+		//s.Ack(false)
 
 		log.Info("sent answers:", i)
 		log.Info("errores:", n_error)

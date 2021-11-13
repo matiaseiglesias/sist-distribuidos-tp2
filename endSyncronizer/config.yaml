@@ -4,27 +4,45 @@ endOutputs:
     end_q_client:
       out: "input_q"  
       n_in: 1
-      n_out: "2"
+      n_out: "3"
     end_a_client:
       out: "input_a"  
       n_in: 1
-      n_out: "2"
+      n_out: "3"
     end_q_i_interface:
-      out: "q_punto3 q_punto2"
-      n_in: 2
-      n_out: "1 2"  
+#      out: "q_punto2 q_punto3"
+      out: "q_punto3 q_punto3_2"
+      n_in: 3
+      n_out: "1 1"  
     end_a_i_interface:
-      out: "a_punto3"
-      n_in: 1
-      n_out: "1"    
+#      out: "a_punto1 a_punto2 a_punto3"
+      out: "a_punto3 a_punto3_2"      
+      n_in: 3
+      n_out: "1 1"    
     end_joiner:
-      out: "join_output"  
-      n_in: 1
+      out: "dgropuby_1"  
+      n_in: 2
       n_out: "1"
     end_d_gb:
       out: "gb_output"  
       n_in: 1
-      n_out: "1"    
+      n_out: "1"
+    end_filter1:
+      out: "<10Negative"
+      n_in: 1
+      n_out: "1" 
+    end_q_delivery:
+      out: "gropuby_q_1"
+      n_in: 1
+      n_out: "1"
+    end_a_delivery:
+      out: "gropuby_a_1"
+      n_in: 1
+      n_out: "1"
+    end_gb:
+      out: "scores_pto_2"
+      n_in: 1
+      n_out: "1"       
 
 input:
   end: "end_syncronizer"

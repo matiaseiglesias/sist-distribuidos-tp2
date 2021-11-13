@@ -1,15 +1,19 @@
 id_destinies: 
-    g1:
-      - "gropuby_a_1"
-      - "gropuby_q_1"
-#    g2:
-#      - "gropuby_a_2"
-#      - "gropuby_q_2"
+  g1:
+    - "gropuby_a_1"
+    - "gropuby_q_1"
+  #g2:
+  #  - "gropuby_a_2"
+  #  - "gropuby_q_2"
 
 q_input: "q_punto2"
 a_input: "a_punto2"
 
 total_output : "total_pto_2"
+endSignal:
+  questions: "end_q_delivery"
+  answers: "end_a_delivery"
+  total: "end_t_delivery"
 
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"

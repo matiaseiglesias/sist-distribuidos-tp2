@@ -10,6 +10,7 @@ LABEL intermediateStageToBeDeleted=true
 RUN mkdir -p /build
 WORKDIR /build/
 
+COPY libraries/ ../libraries
 COPY topTenPto2/main.go .
 COPY topTenPto2/go.mod .
 COPY topTenPto2/go.sum .

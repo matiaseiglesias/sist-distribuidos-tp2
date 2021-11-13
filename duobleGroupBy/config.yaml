@@ -1,13 +1,7 @@
-jr_input: "join_output"
+jr_input: "dgropuby_1"
 groupByOutput: "gb_output"
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
-endSignal:
-  #input: 
-  #    qname: "end_join"
-  #    nsignals: 1  
-  output:
-      qname: "end_join"
-      nsignals: 1
+endSignal: "end_d_gb"
 log:
   level: "info"

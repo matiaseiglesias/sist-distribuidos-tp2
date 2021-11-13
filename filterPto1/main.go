@@ -9,8 +9,8 @@ import (
 	"github.com/grassmudhorses/vader-go/lexicon"
 	"github.com/grassmudhorses/vader-go/sentitext"
 	"github.com/jszwec/csvutil"
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/answers"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
-	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/questions"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -75,8 +75,6 @@ func toByteArray(negatives, total int64) []byte {
 func main() {
 
 	log.Println("starting inputInterface")
-	//time.Sleep(70 * time.Second)
-	log.Println("ready to go")
 
 	v, err := InitConfig()
 	if err != nil {
@@ -98,14 +96,14 @@ func main() {
 	if !conn_ {
 		log.Println("error while trying to connect to RabbitMQ, exiting...")
 	}
-	iQ := v.GetString("input")
-	oQ := v.GetString("output")
-	endQSignalOutput := v.GetString("endSignal.output.questions.qname")
-	queuesName := []string{iQ, oQ, endQSignalOutput}
+	iA := v.GetString("input")
+	oA := v.GetString("output")
+	endASignalOutput := v.GetString("endSignal.output")
+	queuesName := []string{iA, oA, endASignalOutput}
 
 	rabbitConn.RegisterQueues(queuesName, true)
 
-	msgs, err := rabbitConn.Input(iQ)
+	msgs, err := rabbitConn.Input(iA)
 	conn.FailOnError(err, "Failed to register a consumer")
 
 	var wg sync.WaitGroup
@@ -114,56 +112,50 @@ func main() {
 	go func() {
 		i := 0
 		mayor_10 := 0
-		fallas := 0
-		negativos := 0
-		var questions_ []questions.Question
-		running := 0
+		failures := 0
+		negatives := 0
+		var answers_ []answers.Answer
 		for d := range msgs {
-			if err := csvutil.Unmarshal(d.Body, &questions_); err != nil {
+			if err := csvutil.Unmarshal(d.Body, &answers_); err != nil {
 				log.Println("error:", err)
-				fallas++
+				failures++
 				continue
 			}
 			d.Ack(false)
-			if len(questions_) == 0 {
-				fallas++
+			if len(answers_) == 0 {
+				failures++
 				continue
-			} else if questions.IsEndQuestion(&questions_[0]) {
-				running++
-
-			} else if questions_[0].Score > 10 {
-				mayor_10++
-				parseText := sentitext.Parse(questions_[0].Body, lexicon.DefaultLexicon)
-				result := sentitext.PolarityScore(parseText)
-				if result.Compound < -0.5 {
-					negativos++
-				}
-			}
-
-			if len(questions_) > 1 {
-				log.Fatal("Se recibio mas de un mensaje!!!")
-			}
-
-			if running == 1 {
+			} else if answers.IsEndAnswer(&answers_[0]) {
 				log.Println(" bye bye")
 				break
-			}
 
-			i += len(questions_)
-			questions_ = nil
-			if i%100000 == 0 {
+			} else if answers_[0].Score > 10 {
+				mayor_10++
+				parseText := sentitext.Parse(answers_[0].Body, lexicon.DefaultLexicon)
+				result := sentitext.PolarityScore(parseText)
+				if result.Compound < -0.5 {
+					negatives++
+				}
+			}
+			if len(answers_) > 1 {
+				log.Fatal("Se recibio mas de un mensaje!!!")
+			}
+			i += len(answers_)
+			answers_ = nil
+			if i%1 == 0 {
 				log.Println("mensajes leidos: ", i)
 				log.Println("mensajes mayores a diez: ", mayor_10)
-				log.Println("mensajes fallidos : ", fallas)
-				log.Println("mensajes negativos : ", negativos)
+				log.Println("mensajes fallidos : ", failures)
+				log.Println("mensajes negativos : ", negatives)
 			}
 		}
+		b := toByteArray(int64(negatives), int64(mayor_10))
 
-		rabbitConn.SendEndSync(endQSignalOutput, "Filter pto1", 1)
+		err = rabbitConn.Publish(oA, b)
+		conn.FailOnError(err, "Failed to publish a message")
 
-		b := toByteArray(int64(negativos), int64(mayor_10))
-
-		err = rabbitConn.Publish(oQ, b)
+		endSignal := toByteArray(int64(-1), int64(-1))
+		err = rabbitConn.Publish(endASignalOutput, endSignal)
 		conn.FailOnError(err, "Failed to publish a message")
 
 		wg.Done()
@@ -171,4 +163,5 @@ func main() {
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 	wg.Wait()
+	log.Printf(" [*] closing filterPro1")
 }

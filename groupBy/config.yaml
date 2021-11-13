@@ -3,6 +3,6 @@ a_input: "gropuby_a_1"
 output_q: "scores_pto_2"
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
-end_signals : 1  
+end_signal: "end_gb"   
 log:
   level: "info"

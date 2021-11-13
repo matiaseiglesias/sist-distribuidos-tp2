@@ -10,6 +10,7 @@ LABEL intermediateStageToBeDeleted=true
 RUN mkdir -p /build
 WORKDIR /build/
 
+COPY libraries/ ../libraries
 COPY percentageCalculator/main.go .
 COPY percentageCalculator/go.mod .
 COPY percentageCalculator/go.sum .

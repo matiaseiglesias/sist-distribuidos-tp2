@@ -10,8 +10,8 @@ services:
     container_name: client
     image: tp2_client:latest
     volumes:
-      - ./client/files/questions.csv:/files/questions.csv
-      - ./client/files/answers_test.csv:/files/answers.csv
+      - ./client/files/questions_short.csv:/files/questions.csv
+      - ./client/files/answers_short.csv:/files/answers.csv
       - ./client/config.yaml:/config.yaml
     restart: on-failure
     depends_on:
@@ -43,6 +43,18 @@ services:
     links: 
       - rabbitmq
     entrypoint: /inputInterface 
+
+  consumer3:
+    container_name: input_interface_3
+    image: tp2_input_interface:latest
+    volumes:
+      - ./inputInterface/config.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /inputInterface  
 
   filterPto1:
     container_name: filter_pto_1
@@ -116,6 +128,18 @@ services:
       - rabbitmq
     entrypoint: /join
   
+  join_2:
+    container_name: join_2
+    image: tp2_join:latest
+    volumes:
+      - ./join/config_2.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /join
+
   duobleGroupBy:
     container_name: duobleGroupBy
     image: tp2_duoble_group_by:latest

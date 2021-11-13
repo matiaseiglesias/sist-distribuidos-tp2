@@ -6,10 +6,10 @@ import (
 	"encoding/binary"
 	"strings"
 
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 )
 
 func InitLogger(logLevel string) error {
@@ -52,12 +52,6 @@ func PrintConfig(v *viper.Viper) {
 	log.Infof("rabbit queue input from idDelivery : %s", v.GetString("total_input.addr"))
 	log.Infof("rabbit queue output : %s", v.GetString("output"))
 	log.Infof("Log Level: %s", v.GetString("log.level"))
-}
-
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
-	}
 }
 
 // An Item is something we manage in a priority queue.
@@ -111,8 +105,6 @@ func (pq *PriorityQueue) update(item *Item, value float64, priority float64) {
 func main() {
 
 	log.Println("starting inputInterface")
-	//time.Sleep(70 * time.Second)
-	log.Println("ready to go")
 
 	v, err := InitConfig()
 	if err != nil {
@@ -127,58 +119,24 @@ func main() {
 	PrintConfig(v)
 
 	addr := v.GetString("rabbitQueue.address")
-
-	conn, err := amqp.Dial(addr)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	channel, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer channel.Close()
+	rabbitConn := conn.Init(addr)
+	conn_, err := rabbitConn.Connect()
+	conn.FailOnError(err, "Failed to connect to RabbitMQ")
+	if !conn_ {
+		log.Println("error while trying to connect to RabbitMQ, exiting...")
+	}
 
 	scoresQ := v.GetString("scores_input")
-	_, err = channel.QueueDeclare(
-		scoresQ, // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
-	)
-	failOnError(err, "Failed to register a consumer")
-
-	scoresMsgs, err := channel.Consume(
-		scoresQ, // queue
-		"",      // consumer
-		false,   // auto-ack
-		false,   // exclusive
-		false,   // no-local
-		false,   // no-wait
-		nil,     // args
-	)
-	failOnError(err, "Failed to register a consumer")
-
 	totalScoresQ := v.GetString("total_input.addr")
-	_, err = channel.QueueDeclare(
-		totalScoresQ, // name
-		false,        // durable
-		false,        // delete when unused
-		false,        // exclusive
-		false,        // no-wait
-		nil,          // arguments
-	)
-	failOnError(err, "Failed to register a consumer")
+	queues := []string{scoresQ, totalScoresQ}
 
-	totalScoresMsgs, err := channel.Consume(
-		totalScoresQ, // queue
-		"",           // consumer
-		false,        // auto-ack
-		false,        // exclusive
-		false,        // no-local
-		false,        // no-wait
-		nil,          // args
-	)
-	failOnError(err, "Failed to register a consumer")
+	rabbitConn.RegisterQueues(queues, true)
+
+	scoresMsgs, err := rabbitConn.Input(scoresQ)
+	conn.FailOnError(err, "Failed to register a consumer")
+
+	totalScoresMsgs, err := rabbitConn.Input(totalScoresQ)
+	conn.FailOnError(err, "Failed to register a consumer")
 
 	nTotalScores := 2 // v.GetInt("total_input.n")
 	nMsg := 0
@@ -226,19 +184,19 @@ func main() {
 		}
 		d.Ack(false)
 
-		if msg[0] == -1 && msg[1] == -1 {
+		if msg[0] == -1 && msg[1] == -1 && msg[2] == -1 {
 			break
 		}
 		userId := msg[0]
 		qScore := msg[1]
 		aScore := msg[2]
-		//if qScore > float64(scoresAverage["questions"]) && aScore > float64(scoresAverage["answers"]) {
-		item := &Item{
-			id:       userId,
-			priority: qScore + aScore, //the negative of the score
+		if qScore > float64(scoresAverage["questions"]) && aScore > float64(scoresAverage["answers"]) {
+			item := &Item{
+				id:       userId,
+				priority: qScore + aScore,
+			}
+			heap.Push(&pq, item)
 		}
-		heap.Push(&pq, item)
-		//}
 
 		i++
 	}
@@ -249,7 +207,7 @@ func main() {
 		nTop = len(pq)
 	}
 
-	for i := 0; i < nTop; i++ {
+	for i := 1; i <= nTop; i++ {
 		log.Print("top ", i)
 		item := heap.Pop(&pq).(*Item)
 		log.Println(" id", item.id)

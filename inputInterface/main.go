@@ -74,13 +74,20 @@ func getKeys(myMap map[string][]string) []string {
 	return keys
 }
 
+func reverse_int(n int64) int64 {
+	new_int := int64(0)
+	for n > 0 {
+		remainder := n % 10
+		new_int *= 10
+		new_int += remainder
+		n /= 10
+	}
+	return new_int
+}
+
 func main() {
 
 	log.Println("starting inputInterface")
-
-	//time.Sleep(70 * time.Second)
-
-	log.Println("ready to go")
 
 	v, err := InitConfig()
 	if err != nil {
@@ -94,15 +101,11 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
+	addr := v.GetString("rabbitQueue.address")
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
-
-		destinos := v.GetStringMapStringSlice("q_destinies")
-		queueNames := getKeys(destinos)
-		addr := v.GetString("rabbitQueue.address")
-
 		rabbitConn := conn.Init(addr)
 		conn_, err := rabbitConn.Connect()
 		conn.FailOnError(err, "Failed to connect to RabbitMQ")
@@ -110,83 +113,72 @@ func main() {
 			log.Println("error while trying to connect to RabbitMQ, exiting...")
 		}
 
-		//err = channel.Qos(
-		//	1,     // prefetch count
-		//	0,     // prefetch size
-		//	false, // global
-		//)
-		//failOnError(err, "Failed to set QoS")
+		qOutputs := v.GetStringMapStringSlice("q_destinies")
+		qQueueNames := getKeys(qOutputs)
+		qOutGroups := v.GetStringSlice("q_punto3")
 		qInputName := v.GetString("input.questions")
-		endSignalInput := v.GetString("endSignal.input.questions.qname")
-		endSignalOutput := v.GetString("endSignal.output.questions.qname")
+		endQSignal := v.GetString("endSignal.questions")
 
-		queueNames = append(queueNames, qInputName, endSignalInput, endSignalOutput)
+		queues := []string{}
+		queues = append(queues, qQueueNames...)
+		queues = append(queues, qOutGroups...)
+		queues = append(queues, qInputName, endQSignal)
+		rabbitConn.RegisterQueues(queues, true)
 
-		rabbitConn.RegisterQueues(queueNames, true)
-
-		msgs, err := rabbitConn.Input(qInputName)
+		qInput, err := rabbitConn.Input(qInputName)
 		conn.FailOnError(err, "Failed to register a consumer")
 
-		i := 0
-		fallas := 0
+		qRunning := true
+		nQ := 0
+		qFailures := 0
 		var questions_ []questions.Question
-		running := true
-		times := 1
-		for d := range msgs {
 
-			if err := csvutil.Unmarshal(d.Body, &questions_); err != nil {
+		log.Println("available groups: ", qOutGroups)
+
+		for qRunning {
+			q := <-qInput
+			if err := csvutil.Unmarshal(q.Body, &questions_); err != nil {
 				log.Println("error:", err)
-				fallas++
-				d.Ack(false)
+				qFailures++
+				q.Ack(false)
 				continue
 			}
+			for _, readQ := range questions_ {
 
-			for destino, columns := range destinos {
-				for _, readQ := range questions_ {
-
-					var filterQ []questions.Question
-
-					if questions.IsEndQuestion(&readQ) {
-						log.Println("recibi un mensaje de stop")
-						running = false
-						filterQ = []questions.Question{readQ}
-						times = 1
-					} else {
-						filterQ = []questions.Question{questions.Filter(readQ, columns)}
-					}
-					err = questions.Publish(rabbitConn.Channel, destino, filterQ, times)
+				if questions.IsEndQuestion(&readQ) {
+					log.Println("recibi un mensaje de stop")
+					qRunning = false
+					err = questions.Publish(rabbitConn.Channel, endQSignal, []questions.Question{readQ}, 1)
 					conn.FailOnError(err, "Failed to publish a message")
-
+					break
+				}
+				for destino, columns := range qOutputs {
+					var filterQ []questions.Question
+					if destino == "q_punto3" {
+						//log.Println("grupos disponibles: ", qOutGroups)
+						//log.Println("question id: ", readQ.Id)
+						//log.Println("mod ", readQ.Id%int64(len(qOutGroups)))
+						index := reverse_int(readQ.Id) % int64(len(qOutGroups))
+						destino = qOutGroups[index] //delivery.GetGroup(readQ.Id)[0]
+					}
+					filterQ = []questions.Question{questions.Filter(readQ, columns)}
+					err = questions.Publish(rabbitConn.Channel, destino, filterQ, 1)
+					conn.FailOnError(err, "Failed to publish a message")
 				}
 			}
-			d.Ack(false)
-			i += len(questions_)
+			q.Ack(false)
+			nQ += len(questions_)
 			questions_ = nil
-			if i%100000 == 0 {
-				log.Println("[Filter]Read questions: ", i)
-				log.Println("[Filter]fail questions: ", fallas)
-			}
-			if !running {
-				log.Println(" bye bye questions")
-				break
+			if nQ%50000 == 0 {
+				log.Println("[Filter]Read questions: ", nQ)
+				log.Println("[Filter]fail answers: ", qFailures)
 			}
 		}
-		rabbitConn.SendEndSync(endSignalOutput, "Filter", 1)
-
-		//log.Println(" waiting question end signal in:", endSignalInput)
-		endS, _ := rabbitConn.Input(endSignalInput)
-		s := <-endS
-		s.Ack(false)
 		rabbitConn.Close()
 		wg.Done()
 	}()
 
 	go func() {
-
-		destinos := v.GetStringMapStringSlice("a_destinies")
-		queueNames := getKeys(destinos)
-		addr := v.GetString("rabbitQueue.address")
-
 		rabbitConn := conn.Init(addr)
 		conn_, err := rabbitConn.Connect()
 		conn.FailOnError(err, "Failed to connect to RabbitMQ")
@@ -194,78 +186,72 @@ func main() {
 			log.Println("error while trying to connect to RabbitMQ, exiting...")
 		}
 
-		qInputName := v.GetString("input.answers")
-		endSignalInput := v.GetString("endSignal.input.answers.qname")
-		endSignalOutput := v.GetString("endSignal.output.answers.qname")
+		aOutputs := v.GetStringMapStringSlice("a_destinies")
+		aQueueNames := getKeys(aOutputs)
+		aOutGroups := v.GetStringSlice("a_punto3")
 
-		queueNames = append(queueNames, qInputName, endSignalInput, endSignalOutput)
+		aInputName := v.GetString("input.answers")
+		endASignal := v.GetString("endSignal.answers")
 
-		rabbitConn.RegisterQueues(queueNames, true)
+		queues := []string{}
+		queues = append(queues, aQueueNames...)
+		queues = append(queues, aOutGroups...)
+		queues = append(queues, aInputName, endASignal)
 
-		if len(destinos) == 0 {
-			log.Println("No answers output")
-			rabbitConn.SendEndSync(endSignalOutput, "Filter", 1)
-			rabbitConn.Close()
-			wg.Done()
-			return
-		}
+		rabbitConn.RegisterQueues(queues, true)
 
-		msgs, err := rabbitConn.Input(qInputName)
+		aInput, err := rabbitConn.Input(aInputName)
 		conn.FailOnError(err, "Failed to register a consumer")
 
-		i := 0
-		fallas := 0
+		aRunning := true
+		nA := 0
+		aFailures := 0
 		var answers_ []answers.Answer
-		running := true
-		times := 1
-		for d := range msgs {
-
-			if err := csvutil.Unmarshal(d.Body, &answers_); err != nil {
+		log.Println("available groups: ", aOutGroups)
+		for aRunning {
+			a := <-aInput
+			if err := csvutil.Unmarshal(a.Body, &answers_); err != nil {
 				log.Println("error:", err)
-				fallas++
-				d.Ack(false)
+				aFailures++
+				a.Ack(false)
 				continue
 			}
-			for destino, columns := range destinos {
-				for _, readA := range answers_ {
-
-					var filterA []answers.Answer
-					if answers.IsEndAnswer(&readA) {
-						log.Println("recibi un mensaje de stop")
-						running = false
-						filterA = []answers.Answer{readA}
-						times = 1
-					} else {
-						filterA = []answers.Answer{answers.Filter(readA, columns)}
-					}
-					err = answers.Publish(rabbitConn.Channel, destino, filterA, times)
+			for _, readA := range answers_ {
+				if answers.IsEndAnswer(&readA) {
+					log.Println("recibi un mensaje de stop")
+					aRunning = false
+					err = answers.Publish(rabbitConn.Channel, endASignal, []answers.Answer{readA}, 1)
 					conn.FailOnError(err, "Failed to publish a message")
-
+					break
+				}
+				for destino, columns := range aOutputs {
+					newDestino := destino
+					var filterA []answers.Answer
+					if destino == "a_punto3" {
+						//log.Println("grupos disponibles: ", aOutGroups)
+						//log.Println("question id: ", readA.ParentId)
+						//log.Println("mod ", readA.ParentId%int64(len(aOutGroups)))
+						index := reverse_int(readA.ParentId) % int64(len(aOutGroups))
+						newDestino = aOutGroups[index] //delivery.GetGroup(readA.ParentId)[0]
+						//log.Println("destino: ", newDestino)
+					}
+					filterA = []answers.Answer{answers.Filter(readA, columns)}
+					err = answers.Publish(rabbitConn.Channel, newDestino, filterA, 1)
+					conn.FailOnError(err, "Failed to publish a message")
 				}
 			}
-			d.Ack(false)
-			i += len(answers_)
+			a.Ack(false)
+			nA += len(answers_)
 			answers_ = nil
-			if i%100000 == 0 {
-				log.Println("[Filter]read answers: ", i)
-				log.Println("[Filter]fail answers: ", fallas)
-			}
-			if !running {
-				log.Println(" bye bye answers")
-				break
+			if nA%50000 == 0 {
+				log.Println("[Filter]Read answers: ", nA)
+				log.Println("[Filter]fail questions: ", aFailures)
 			}
 		}
-		rabbitConn.SendEndSync(endSignalOutput, "Filter", 1)
-
-		//log.Println(" waiting answer end signal in:", endSignalInput)
-		endS, _ := rabbitConn.Input(endSignalInput)
-		s := <-endS
-		s.Ack(false)
 		rabbitConn.Close()
 		wg.Done()
 	}()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 	wg.Wait()
 	log.Printf(" [*] Closing input interface")
 }

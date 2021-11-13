@@ -157,6 +157,7 @@ func (c *RabbitConn) SendEndSync(destiny, pName string, times int) error {
 }
 
 type Delivery struct {
+	Id             string
 	currentIndex   int //:= 0
 	maxIndex       int //:= len(groupQueuesAddr)
 	ids            []float64
@@ -164,7 +165,7 @@ type Delivery struct {
 	idToGroupQueue map[float64][]string
 }
 
-func containsFloat(set []float64, value float64) bool {
+func containsInt(set []float64, value float64) bool {
 	for _, v := range set {
 		if v == value {
 			return true
@@ -174,6 +175,7 @@ func containsFloat(set []float64, value float64) bool {
 }
 
 func (d *Delivery) Init(m map[string][]string) {
+	d.idToGroupQueue = make(map[float64][]string)
 	var groupAddr [][]string
 	for _, val := range m {
 		groupAddr = append(groupAddr, val)
@@ -182,8 +184,16 @@ func (d *Delivery) Init(m map[string][]string) {
 	d.groups = groupAddr
 }
 
-func (d *Delivery) GetQueueName(id float64) []string {
-	if !containsFloat(d.ids, id) {
+func (d *Delivery) GetOutQueueNames() []string {
+	queues := []string{}
+	for _, groups := range d.groups {
+		queues = append(queues, groups...)
+	}
+	return queues
+}
+
+func (d *Delivery) GetGroup(id float64) []string {
+	if !containsInt(d.ids, id) {
 		d.ids = append(d.ids, id)
 		d.idToGroupQueue[id] = d.groups[d.getNextIndex()]
 	}

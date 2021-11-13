@@ -1,11 +1,8 @@
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
-input: "q_punto1"
+input: "a_punto1"
 output: "<10Negative"
 endSignal: 
-  output:
-    questions:
-      qname: "end_3_2_q"
-      nsignals: 1
+  output: "end_filter1"
 log:
   level: "info"
