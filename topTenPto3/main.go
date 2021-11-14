@@ -50,6 +50,7 @@ func PrintConfig(v *viper.Viper) {
 	log.Infof("Filter configuration")
 	log.Infof("rabbit queue address: %s", v.GetString("rabbitQueue.address"))
 	log.Infof("input double groupby results queue: %s", v.GetString("gb_input"))
+	log.Infof("rabbit queue output : %s", v.GetString("output"))
 	log.Infof("Log Level: %s", v.GetString("log.level"))
 }
 
@@ -119,8 +120,6 @@ func containYear(set []int, value int) bool {
 func main() {
 
 	log.Println("starting inputInterface")
-	//time.Sleep(70 * time.Second)
-	log.Println("ready to go")
 
 	v, err := InitConfig()
 	if err != nil {

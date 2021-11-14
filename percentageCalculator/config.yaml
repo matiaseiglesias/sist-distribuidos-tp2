@@ -1,5 +1,6 @@
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
 input: "<10Negative"
+output: "result_pto1"
 log:
   level: "info"

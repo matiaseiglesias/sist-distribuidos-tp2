@@ -6,13 +6,18 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jszwec/csvutil"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
-//const ADDR = "amqp://guest:guest@rabbitmq:5672/"
+type Result struct {
+	TotalGrT10     int64   `csv:"TotalGrT10"`
+	TotalNegatives int64   `csv:"TotalNegatives"`
+	Percentage     float64 `csv:"Percentage"`
+}
 
 func InitLogger(logLevel string) error {
 	level, err := log.ParseLevel(logLevel)
@@ -82,7 +87,8 @@ func main() {
 	}
 
 	iA := v.GetString("input")
-	rabbitConn.RegisterQueues([]string{iA}, true)
+	output := v.GetString("output")
+	rabbitConn.RegisterQueues([]string{iA, output}, true)
 
 	msgs, err := rabbitConn.Input(iA)
 	conn.FailOnError(err, "Failed to register a consumer")
@@ -120,10 +126,17 @@ func main() {
 		}
 		log.Printf("final result, negatives > 10: %d, total > 10: %d \n", negatives, greater10)
 		if greater10 > 0 {
-			log.Println("final result, percentage: ", (negatives/greater10)*100)
+			log.Println("final result, percentage: ", (float64(negatives)/float64(greater10))*100)
 		} else {
 			log.Println("final result, percentage: 0%")
 		}
+
+		finalResult := []Result{{TotalGrT10: greater10, TotalNegatives: negatives, Percentage: (float64(negatives) / float64(greater10)) * 100}}
+		data, err := csvutil.Marshal(finalResult)
+		if err != nil {
+			log.Println("converting result failed:", err)
+		}
+		rabbitConn.Publish(output, data)
 
 		rabbitConn.Close()
 		wg.Done()

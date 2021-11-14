@@ -6,11 +6,17 @@ import (
 	"encoding/binary"
 	"strings"
 
+	"github.com/jszwec/csvutil"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
+
+type Result struct {
+	TopNumber int     `csv:"TopNumber"`
+	Id        float64 `csv:"Id"`
+}
 
 func InitLogger(logLevel string) error {
 	level, err := log.ParseLevel(logLevel)
@@ -128,7 +134,8 @@ func main() {
 
 	scoresQ := v.GetString("scores_input")
 	totalScoresQ := v.GetString("total_input.addr")
-	queues := []string{scoresQ, totalScoresQ}
+	output := v.GetString("output")
+	queues := []string{scoresQ, totalScoresQ, output}
 
 	rabbitConn.RegisterQueues(queues, true)
 
@@ -211,6 +218,12 @@ func main() {
 		log.Print("top ", i)
 		item := heap.Pop(&pq).(*Item)
 		log.Println(" id", item.id)
+		finalResult := []Result{{TopNumber: i, Id: item.id}}
+		data, err := csvutil.Marshal(finalResult)
+		if err != nil {
+			log.Println("converting result failed:", err)
+		}
+		rabbitConn.Publish(output, data)
 	}
 
 	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")

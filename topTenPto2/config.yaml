@@ -1,6 +1,7 @@
 rabbitQueue:
   address: "amqp://guest:guest@rabbitmq:5672/"
 scores_input: "scores_pto_2"
+output: "result_pto2"
 
 total_input:
   addr: "total_pto_2"

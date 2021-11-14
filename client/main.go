@@ -149,10 +149,6 @@ func main() {
 		err = questions.Publish(rabbitConn.Channel, qEndSignal, tmpQ, 1)
 		conn.FailOnError(err, "Failed to publish a message")
 
-		//endSignalInput, _ := rabbitConn.Input("end_2_1_q")
-		//s := <-endSignalInput
-		//s.Ack(false)
-
 		log.Info("sent questions:", i)
 		log.Info("errores:", n_error)
 		rabbitConn.Close()
@@ -219,10 +215,6 @@ func main() {
 		tmpA = append(tmpA, answers.EndAnswer())
 		err = answers.Publish(rabbitConn.Channel, qEndSignal, tmpA, 1)
 		conn.FailOnError(err, "Failed to publish a message")
-
-		//endSignalInput, _ := rabbitConn.Input("end_2_1_a")
-		//s := <-endSignalInput
-		//s.Ack(false)
 
 		log.Info("sent answers:", i)
 		log.Info("errores:", n_error)
