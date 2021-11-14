@@ -143,7 +143,8 @@ func main() {
 		qRunning := true
 		times := 1
 		qIdToResult := make(map[int64]*joinResult.JoinResult)
-		qIds := make([]int64, 0)
+		qIds := make(map[int64]int)
+		//qIds := make([]int64, 0)
 		aResultStorage := make(map[int64][]*joinResult.JoinResult)
 
 		for aRunning || qRunning {
@@ -162,15 +163,17 @@ func main() {
 					q.Ack(false)
 					continue
 				}
-				qIds = append(qIds, questions_[0].Id)
+				qIds[questions_[0].Id] = 1
+				//qIds = append(qIds, questions_[0].Id)
 				qIdToResult[questions_[0].Id] = &joinResult.JoinResult{
 					CreationDate: questions_[0].CreationDate,
 					Score:        questions_[0].Score,
 					Tags:         questions_[0].Tags,
 				}
 				//log.Println("agregue el result: ", qIdToResult[questions_[0].Id])
-				aIds := getKeys(aResultStorage)
-				if contains(aIds, questions_[0].Id) {
+				//aIds := getKeys(aResultStorage)
+				_, ok := aResultStorage[questions_[0].Id]
+				if ok {
 					//log.Println("hay match con parent id guardado= :", questions_[0].Id)
 					aResults := aResultStorage[questions_[0].Id]
 					tags := qIdToResult[questions_[0].Id].Tags
@@ -201,7 +204,8 @@ func main() {
 					CreationDate: answers_[0].CreationDate,
 					Score:        answers_[0].Score,
 				}
-				if contains(qIds, answers_[0].ParentId) {
+				_, ok := qIds[answers_[0].ParentId]
+				if ok {
 					//log.Println("hay match con parent id= :", answers_[0].ParentId)
 					tags := qIdToResult[answers_[0].ParentId].Tags
 					j.Tags = tags

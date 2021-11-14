@@ -140,6 +140,18 @@ services:
       - rabbitmq
     entrypoint: /join
 
+  join_3:
+    container_name: join_3
+    image: tp2_join:latest
+    volumes:
+      - ./join/config_3.yaml:/config.yaml
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    entrypoint: /join  
+
   duobleGroupBy:
     container_name: duobleGroupBy
     image: tp2_duoble_group_by:latest
