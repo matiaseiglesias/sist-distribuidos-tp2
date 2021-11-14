@@ -12,21 +12,21 @@ log:
   level: "info"
   
 q_destinies: 
-  #q_punto2:
-  #  - "OwnerUserId"
-  #  - "Score"  
+  q_punto2:
+    - "OwnerUserId"
+    - "Score"  
   q_punto3:
     - "Id"
     - "CreationDate"
     - "Score"
     - "Tags"  
 a_destinies:
-  #a_punto1:
-  #  - "Body"
-  #  - "Score"
-  #a_punto2:
-  #  - "OwnerUserId"
-  #  - "Score" 
+  a_punto1:
+    - "Body"
+    - "Score"
+  a_punto2:
+    - "OwnerUserId"
+    - "Score" 
   a_punto3:
     - "ParentId"
     - "CreationDate"

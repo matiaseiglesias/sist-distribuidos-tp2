@@ -11,14 +11,14 @@ endOutputs:
       n_out: "3"
     end_q_i_interface:
 #      out: "q_punto2 q_punto3"
-      out: "q_punto3 q_punto3_2 q_punto3_3"
+      out: "q_punto2 q_punto3 q_punto3_2 q_punto3_3"
       n_in: 3
-      n_out: "1 1 1"  
+      n_out: "1 1 1 1"  
     end_a_i_interface:
 #      out: "a_punto1 a_punto2 a_punto3"
-      out: "a_punto3 a_punto3_2 a_punto3_3"      
+      out: "a_punto1 a_punto2 a_punto3 a_punto3_2 a_punto3_3"    
       n_in: 3
-      n_out: "1 1 1"    
+      n_out: "2 1 1 1 1"
     end_joiner:
       out: "dgropuby_1"  
       n_in: 3
@@ -29,19 +29,19 @@ endOutputs:
       n_out: "1"
     end_filter1:
       out: "<10Negative"
-      n_in: 1
+      n_in: 2
       n_out: "1" 
     end_q_delivery:
-      out: "gropuby_q_1"
+      out: "gropuby_q_1 gropuby_q_2"
       n_in: 1
-      n_out: "1"
+      n_out: "1 1"
     end_a_delivery:
-      out: "gropuby_a_1"
+      out: "gropuby_a_1 gropuby_a_2"
       n_in: 1
-      n_out: "1"
+      n_out: "1 1"
     end_gb:
       out: "scores_pto_2"
-      n_in: 1
+      n_in: 2
       n_out: "1"       
 
 input:

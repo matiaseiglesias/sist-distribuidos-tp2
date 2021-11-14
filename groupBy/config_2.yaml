@@ -1,0 +1,8 @@
+q_input: "gropuby_q_2"
+a_input: "gropuby_a_2"       
+output_q: "scores_pto_2"
+rabbitQueue:
+  address: "amqp://guest:guest@rabbitmq:5672/"
+end_signal: "end_gb"   
+log:
+  level: "info"

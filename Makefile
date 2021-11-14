@@ -11,11 +11,11 @@ docker-image:
 	docker build -f ./rabbitmq/rabbitmq.dockerfile -t "tp2_rabbitmq:latest" .
 	docker build -f ./inputInterface/consumer.dockerfile -t "tp2_input_interface:latest" .
 	docker build -f ./client/producer.dockerfile -t "tp2_client:latest" .
-	#docker build -f ./filterPto1/filterPto1.dockerfile -t "tp2_filter_pto_1:latest" .
-	#docker build -f ./percentageCalculator/percentageCalculator.dockerfile -t "tp2_percentage_calculator:latest" .
-	#docker build -f ./idDelivery/idDelivery.dockerfile -t "tp2_id_delivery:latest" .
-	#docker build -f ./groupBy/groupBy.dockerfile -t "tp2_group_by:latest" .
-	#docker build -f ./topTenPto2/topTenPto2.dockerfile -t "tp2_top_ten_pto2:latest" .
+	docker build -f ./filterPto1/filterPto1.dockerfile -t "tp2_filter_pto_1:latest" .
+	docker build -f ./percentageCalculator/percentageCalculator.dockerfile -t "tp2_percentage_calculator:latest" .
+	docker build -f ./idDelivery/idDelivery.dockerfile -t "tp2_id_delivery:latest" .
+	docker build -f ./groupBy/groupBy.dockerfile -t "tp2_group_by:latest" .
+	docker build -f ./topTenPto2/topTenPto2.dockerfile -t "tp2_top_ten_pto2:latest" .
 	docker build -f ./join/join.dockerfile -t "tp2_join:latest" .
 	docker build -f ./duobleGroupBy/duobleGroupBy.dockerfile -t "tp2_duoble_group_by:latest" .
 	docker build -f ./topTenPto3/topTenPto3.dockerfile -t "tp2_top_ten_pto3:latest" .

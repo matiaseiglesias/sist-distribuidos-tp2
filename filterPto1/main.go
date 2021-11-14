@@ -142,7 +142,7 @@ func main() {
 			}
 			i += len(answers_)
 			answers_ = nil
-			if i%1 == 0 {
+			if i%100000 == 0 {
 				log.Println("mensajes leidos: ", i)
 				log.Println("mensajes mayores a diez: ", mayor_10)
 				log.Println("mensajes fallidos : ", failures)
