@@ -5,12 +5,20 @@ import (
 	"strings"
 
 	"github.com/jszwec/csvutil"
+
+	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/conn"
 	"github.com/matiaseiglesias/sist-distribuidos-tp2/tree/master/libraries/joinResult"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 )
+
+type Result struct {
+	Year      int    `csv:"Year"`
+	TopNumber int    `csv:"TopNumber"`
+	Tag       string `csv:"Tag"`
+	Score     int64  `csv:"Score"`
+}
 
 func InitLogger(logLevel string) error {
 	level, err := log.ParseLevel(logLevel)
@@ -134,39 +142,24 @@ func main() {
 	PrintConfig(v)
 
 	addr := v.GetString("rabbitQueue.address")
-
-	conn, err := amqp.Dial(addr)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	channel, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer channel.Close()
+	rabbitConn := conn.Init(addr)
+	conn_, err := rabbitConn.Connect()
+	conn.FailOnError(err, "Failed to connect to RabbitMQ")
+	if !conn_ {
+		log.Println("error while trying to connect to RabbitMQ, exiting...")
+	}
 
 	gbName := v.GetString("gb_input")
-	_, err = channel.QueueDeclare(
-		gbName, // name
-		false,  // durable
-		false,  // delete when unused
-		false,  // exclusive
-		false,  // no-wait
-		nil,    // arguments
-	)
-	failOnError(err, "Failed to register a consumer")
+	output := v.GetString("output")
+	queues := []string{gbName, output}
 
-	gbMsgs, err := channel.Consume(
-		gbName, // queue
-		"",     // consumer
-		false,  // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	failOnError(err, "Failed to register a consumer")
+	rabbitConn.RegisterQueues(queues, true)
 
-	nInputQueues := 1 // v.GetInt("total_input.n")
-	finishedQueues := 0
+	gbMsgs, err := rabbitConn.Input(gbName)
+	conn.FailOnError(err, "Failed to register a consumer")
+
+	running := true
+
 	var gbR_ []joinResult.GBResult
 
 	tagsScorePerYear := make(map[int]PriorityQueue)
@@ -175,7 +168,7 @@ func main() {
 	i := 0
 	failures := 0
 
-	for finishedQueues < nInputQueues {
+	for running {
 
 		gbResult := <-gbMsgs
 
@@ -192,7 +185,7 @@ func main() {
 		}
 		if joinResult.IsEndGBResult(&gbR_[0]) {
 			log.Println("end message received")
-			finishedQueues++
+			running = false
 			continue
 		}
 
@@ -224,7 +217,15 @@ func main() {
 		for i_ := 1; i_ <= nTop; i_++ {
 			item := heap.Pop(&pq_).(*Item)
 			log.Printf("Top %d: Tag: %s, Score: %d", i_, item.tag, item.priority)
+
+			finalResult := []Result{{Year: year_, TopNumber: i_, Tag: item.tag, Score: item.priority}}
+			data, err := csvutil.Marshal(finalResult)
+			if err != nil {
+				log.Println("converting result failed:", err)
+			}
+			rabbitConn.Publish(output, data)
 		}
 	}
-	log.Printf("Exiting")
+	rabbitConn.Close()
+	log.Printf("Closing topTenPto3")
 }

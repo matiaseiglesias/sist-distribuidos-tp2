@@ -191,6 +191,7 @@ func main() {
 		}
 		d.Ack(false)
 
+		//end signal
 		if msg[0] == -1 && msg[1] == -1 && msg[2] == -1 {
 			break
 		}
@@ -226,5 +227,6 @@ func main() {
 		rabbitConn.Publish(output, data)
 	}
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	rabbitConn.Close()
+	log.Printf(" Closing topTenPto2")
 }
