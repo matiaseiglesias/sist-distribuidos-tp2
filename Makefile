@@ -29,7 +29,7 @@ docker-image:
 .PHONY: docker-image
 
 docker-compose-up: docker-image
-	docker-compose -f docker-compose-dev.yaml up -d --build
+	docker-compose -f docker-compose-dev.yaml up producer consumer1 consumer2 consumer3 filterPto1 filterPto1_2 percentageCalculator1  idDelivery groupBy1 groupBy1_2 topTenPto2 join join_2 join_3 duobleGroupBy topTenPto3
 .PHONY: docker-compose-up
 
 docker-compose-down:
